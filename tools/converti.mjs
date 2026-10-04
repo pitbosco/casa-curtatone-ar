@@ -41,7 +41,8 @@ console.log(`mesh in ingresso: ${count()}`);
 // Ordine importante: vince la prima regola che corrisponde.
 // Colori tarati sulle foto attuali dell'edificio (paramano in mattoni, calcestruzzo a vista).
 const PALETTE = [
-  [/^Livello|Asfalto|topografic/i, null], // elementi da scartare (il terreno in AR è il foglio)
+  [/^Livello/i, null], // elementi da scartare
+  [/Asfalto|topografic/i, { color: 0x7d7b77, rough: 1 }],                       // terreno
   [/vetro|Glass/i, { color: 0x9fb4bf, rough: 0.05, metal: 0.1, opacity: 0.4 }],
   [/Finestra|Gealan/i, { color: 0x56616a, rough: 0.25, metal: 0.3 }],           // vetrate scure con telaio chiaro: tono medio
   [/Porta/i, { color: 0x6b5444, rough: 0.7 }],
