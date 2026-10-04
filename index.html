@@ -58,7 +58,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { MindARThree } from 'mindar-image-three';
 
 const $ = (id) => document.getElementById(id);
@@ -95,7 +95,7 @@ stage.add(shadowPlane);
 const pivot = new THREE.Group();
 stage.add(pivot);
 
-const modelReady = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync('assets/casa.glb').then((gltf) => {
+const modelReady = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/')).loadAsync('assets/casa.glb').then((gltf) => {
   const m = gltf.scene;
   m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   // Normalizza: impronta grande l'80% del marker, centrata, appoggiata sul foglio.

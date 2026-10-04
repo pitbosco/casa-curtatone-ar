@@ -9,7 +9,7 @@ const PORT = 8080;
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
-  '.glb': 'model/gltf-binary', '.mind': 'application/octet-stream', '.json': 'application/json',
+  '.glb': 'model/gltf-binary', '.usdz': 'model/vnd.usdz+zip', '.mind': 'application/octet-stream', '.json': 'application/json',
 };
 
 http.createServer((req, res) => {

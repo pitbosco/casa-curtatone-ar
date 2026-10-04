@@ -21,6 +21,7 @@
 <p>
   <button id="btnMarker">1. Genera e compila marker</button>
   <button id="btnModel">2. Genera modello segnaposto</button>
+  <button id="btnUsdz">3. Genera casa.usdz (iPhone) da casa-ios.glb</button>
 </p>
 <canvas id="c" width="1200" height="1200"></canvas>
 <div id="log"></div>
@@ -28,6 +29,9 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { USDZExporter } from 'three/addons/exporters/USDZExporter.js';
 
 const log = (m) => { document.getElementById('log').textContent += m + '\n'; console.log(m); };
 const save = async (name, body) => {
@@ -177,6 +181,15 @@ document.getElementById('btnModel').onclick = async () => {
   const glb = await new GLTFExporter().parseAsync(g, { binary: true });
   await save('casa.glb', new Blob([glb]));
   log('MODELLO OK');
+};
+// ---------- USDZ per AR Quick Look (iPhone) ----------
+// Generato qui una volta sola, così il telefono non deve convertirlo al volo.
+document.getElementById('btnUsdz').onclick = async () => {
+  const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');
+  const gltf = await new GLTFLoader().setDRACOLoader(draco).loadAsync('/assets/casa-ios.glb?' + Date.now());
+  const usdz = await new USDZExporter().parse(gltf.scene);
+  await save('casa.usdz', new Blob([usdz]));
+  log('USDZ OK ' + (usdz.byteLength / 1e6).toFixed(1) + ' MB');
 };
 </script>
 </body>

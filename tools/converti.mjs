@@ -6,14 +6,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, prune, weld, join, flatten, center, meshopt, simplifyPrimitive } from '@gltf-transform/functions';
+import { dedup, prune, weld, unweld, normals, join, flatten, center, draco, simplifyPrimitive } from '@gltf-transform/functions';
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
+import draco3d from 'draco3dgltf';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = path.join(ROOT, 'assets', 'casa.glb');
+// --ios: versione alleggerita per AR Quick Look (il formato USDZ di three.js è testuale e pesa molto).
+const IOS = process.argv.includes('--ios');
+const OUT = path.join(ROOT, 'assets', IOS ? 'casa-ios.glb' : 'casa.glb');
 const TARGET_SIZE = 0.5; // dimensione massima in metri (scala "plastico" per la vista nella stanza)
 
-const input = process.argv[2];
+const input = process.argv.slice(2).find((a) => !a.startsWith('--'));
 if (!input || !existsSync(input)) {
   console.error('Uso: npm run converti -- "C:\\percorso\\file.fbx"');
   process.exit(1);
@@ -30,7 +33,7 @@ if (/\.fbx$/i.test(input)) {
 }
 
 await MeshoptEncoder.ready;
-const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
+const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder, 'draco3d.encoder': await draco3d.createEncoderModule() });
 const doc = await io.read(glbIn);
 const scene = doc.getRoot().getDefaultScene() ?? doc.getRoot().listScenes()[0];
 
@@ -41,7 +44,7 @@ console.log(`mesh in ingresso: ${count()}`);
 // Ordine importante: vince la prima regola che corrisponde.
 // Colori tarati sulle foto attuali dell'edificio (paramano in mattoni, calcestruzzo a vista).
 const PALETTE = [
-  [/^Livello/i, null], // elementi da scartare
+  [IOS ? /^Livello|Tramezza|Tamponamento Interno|Porta/i : /^Livello/i, null], // elementi da scartare
   [/Asfalto|topografic/i, { color: 0x7d7b77, rough: 1 }],                       // terreno
   [/vetro|Glass/i, { color: 0x9fb4bf, rough: 0.05, metal: 0.1, opacity: 0.4 }],
   [/Finestra|Gealan/i, { color: 0xd3d5d4, rough: 0.4, metal: 0.4 }],            // telai in alluminio chiaro (vetri separati sotto)
@@ -116,15 +119,23 @@ for (const node of doc.getRoot().listNodes()) {
   for (const prim of mesh.listPrimitives()) {
     if (prim.getMaterial() === material(GLASS) && spec !== GLASS) { triBefore += tris(prim); triAfter += tris(prim); continue; }
     triBefore += tris(prim);
-    if (tris(prim) > 200) {
-      simplifyPrimitive(prim, { simplifier: MeshoptSimplifier, ratio: 0, error: fine ? 0.006 : 0.002, lockBorder: false });
+    if (IOS && /Gealan|Finestra/i.test(mesh.getName()) && tris(prim) > 200) {
+      // Semplificazione "a griglia": fonde anche i pezzi separati dei profili.
+      const pos = prim.getAttribute('POSITION').getArray();
+      const [idx] = MeshoptSimplifier.simplifySloppy(Uint32Array.from(prim.getIndices().getArray()), Float32Array.from(pos), 3, null, Math.floor(prim.getIndices().getCount() * 0.03 / 3) * 3, 0.04);
+      prim.setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint32Array(idx)).setBuffer(buffer));
+    } else if (tris(prim) > 200) {
+      simplifyPrimitive(prim, { simplifier: MeshoptSimplifier, ratio: 0, error: (fine ? 0.006 : 0.002) * (IOS ? 4 : 1), lockBorder: false });
     }
     triAfter += tris(prim);
+    if (process.env.DEBUG) (globalThis.stat ??= {})[mesh.getName().split(' ').slice(0, 3).join(' ')] = ((globalThis.stat ?? {})[mesh.getName().split(' ').slice(0, 3).join(' ')] ?? 0) + tris(prim);
   }
 }
 console.log(`triangoli: ${Math.round(triBefore)} → ${Math.round(triAfter)}`);
+if (process.env.DEBUG) console.log(Object.entries(globalThis.stat).sort((a, b) => b[1] - a[1]).slice(0, 12));
 
-await doc.transform(prune(), join(), center({ pivot: 'below' }), prune());
+// Normali a facce piatte: servono a iPhone (Quick Look) e Android (Scene Viewer) per aprire il modello.
+await doc.transform(prune(), unweld(), normals({ overwrite: true }), join(), center({ pivot: 'below' }), prune());
 console.log(`mesh dopo l'unione: ${count()}`);
 
 // Scala tutto a TARGET_SIZE: Revit esporta in piedi/cm, qui non importa.
@@ -151,9 +162,9 @@ console.log(`dimensioni originali (unità file): ${size.map((x) => x.toFixed(2))
 await io.write(OUT, doc);
 let mb = statSync(OUT).size / 1e6;
 if (mb > 8) {
-  console.log(`${mb.toFixed(1)} MB: comprimo la geometria (meshopt)…`);
-  await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
+  console.log(`${mb.toFixed(1)} MB: comprimo la geometria (Draco, supportato anche da Scene Viewer)…`);
+  await doc.transform(draco());
   await io.write(OUT, doc);
   mb = statSync(OUT).size / 1e6;
 }
-console.log(`OK → assets/casa.glb (${mb.toFixed(1)} MB)`);
+console.log(`OK → ${path.relative(ROOT, OUT)} (${mb.toFixed(1)} MB)`);

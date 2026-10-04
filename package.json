@@ -3,10 +3,12 @@
   "private": true,
   "scripts": {
     "server": "node tools/server.js",
-    "converti": "node tools/converti.mjs"
+    "converti": "node tools/converti.mjs",
+    "converti-ios": "node tools/converti.mjs --ios"
   },
   "devDependencies": {
     "@gltf-transform/cli": "^4.5.1",
+    "draco3dgltf": "^1.5.7",
     "fbx2gltf": "^0.9.7-p1",
     "qrcode": "^1.5.4"
   }
