@@ -39,17 +39,21 @@ console.log(`mesh in ingresso: ${count()}`);
 
 // L'FBX di Revit arriva senza materiali: li assegno in base al nome della famiglia.
 // Ordine importante: vince la prima regola che corrisponde.
+// Colori tarati sulle foto attuali dell'edificio (paramano in mattoni, calcestruzzo a vista).
 const PALETTE = [
-  [/^Livello/i, null], // elementi da scartare
-  [/Pannello sistema Vetro|Vetro/i, { color: 0x9fbccb, rough: 0.1, opacity: 0.45 }],
-  [/Finestra|Gealan|Porta/i, { color: 0x3b4045, rough: 0.5, metal: 0.2 }],
-  [/Ringhiera|Montante|Tipo di corrente/i, { color: 0x2f3133, rough: 0.5, metal: 0.4 }],
-  [/Tetto/i, { color: 0xaaa49a, rough: 0.9 }],
-  [/Pavimento|Solaio|Scala/i, { color: 0xcfc8b9, rough: 0.9 }],
-  [/Pilastro/i, { color: 0xd9d3c6, rough: 0.85 }],
-  [/topografic/i, { color: 0xb8b3a7, rough: 1 }],
-  [/Muro/i, { color: 0xeee9de, rough: 0.9 }],
-  [/./, { color: 0xdedad2, rough: 0.9 }],
+  [/^Livello|Asfalto|topografic/i, null], // elementi da scartare (il terreno in AR è il foglio)
+  [/vetro|Glass/i, { color: 0x9fb4bf, rough: 0.05, metal: 0.1, opacity: 0.4 }],
+  [/Finestra|Gealan/i, { color: 0x56616a, rough: 0.25, metal: 0.3 }],           // vetrate scure con telaio chiaro: tono medio
+  [/Porta/i, { color: 0x6b5444, rough: 0.7 }],
+  [/Ringhiera|Montante|Tipo di corrente/i, { color: 0x3a3c3e, rough: 0.5, metal: 0.5 }],
+  [/Tamponamento Esterno/i, { color: 0xa5766a, rough: 0.95 }],                  // paramano
+  [/parapetto/i, { color: 0xb08578, rough: 0.95 }],                             // mattoni traforati
+  [/Pilastro - Circolare Diametro (610|800)/i, { color: 0xa0705f, rough: 0.95 }], // pilastri rivestiti in mattoni
+  [/Pilastro/i, { color: 0xbcbbb5, rough: 0.85 }],                              // pilotis in calcestruzzo
+  [/Tetto/i, { color: 0xa5a29b, rough: 0.9 }],
+  [/Pavimento|Solaio|Scala/i, { color: 0xc9c6be, rough: 0.9 }],                 // solai e bordi balconi a vista
+  [/Muro/i, { color: 0xece8df, rough: 0.9 }],                                   // tramezze e muri interni
+  [/./, { color: 0xc9c6be, rough: 0.9 }],
 ];
 const mats = new Map();
 const material = (spec) => {
