@@ -44,7 +44,7 @@ const PALETTE = [
   [/^Livello/i, null], // elementi da scartare
   [/Asfalto|topografic/i, { color: 0x7d7b77, rough: 1 }],                       // terreno
   [/vetro|Glass/i, { color: 0x9fb4bf, rough: 0.05, metal: 0.1, opacity: 0.4 }],
-  [/Finestra|Gealan/i, { color: 0x56616a, rough: 0.25, metal: 0.3 }],           // vetrate scure con telaio chiaro: tono medio
+  [/Finestra|Gealan/i, { color: 0xd3d5d4, rough: 0.4, metal: 0.4 }],            // telai in alluminio chiaro (vetri separati sotto)
   [/Porta/i, { color: 0x6b5444, rough: 0.7 }],
   [/Ringhiera|Montante|Tipo di corrente/i, { color: 0x3a3c3e, rough: 0.5, metal: 0.5 }],
   [/Tamponamento Esterno/i, { color: 0xa5766a, rough: 0.95 }],                  // paramano
@@ -75,6 +75,28 @@ for (const mesh of doc.getRoot().listMeshes()) for (const prim of mesh.listPrimi
 }
 await doc.transform(dedup(), prune(), flatten(), weld());
 
+// Nelle finestre Revit telaio e vetro sono un unico oggetto. Le lastre sono triangoli grandi
+// (altezza minima > 12 cm), i profili del telaio sono sottili: li separo in base a questo.
+const GLASS = PALETTE.find(([re]) => re.test('vetro'))[1];
+const buffer = doc.getRoot().listBuffers()[0];
+function splitGlass(mesh, prim, scale) {
+  const idx = prim.getIndices().getArray(), pos = prim.getAttribute('POSITION');
+  const a = [0, 0, 0], b = [0, 0, 0], c = [0, 0, 0], glass = [], frame = [];
+  const sub = (p, q) => [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
+  const len = (v) => Math.hypot(...v) * scale;
+  for (let i = 0; i < idx.length; i += 3) {
+    pos.getElement(idx[i], a); pos.getElement(idx[i + 1], b); pos.getElement(idx[i + 2], c);
+    const u = sub(b, a), v = sub(c, a);
+    const area = len([u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]) * scale / 2;
+    const longest = Math.max(len(u), len(v), len(sub(c, b)));
+    (2 * area / longest > 0.12 ? glass : frame).push(idx[i], idx[i + 1], idx[i + 2]);
+  }
+  if (!glass.length) return;
+  prim.setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint32Array(frame)).setBuffer(buffer));
+  mesh.addPrimitive(doc.createPrimitive().setAttribute('POSITION', pos).setMaterial(material(GLASS))
+    .setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint32Array(glass)).setBuffer(buffer)));
+}
+
 await MeshoptSimplifier.ready;
 let triBefore = 0, triAfter = 0;
 const tris = (p) => (p.getIndices()?.getCount() ?? 0) / 3;
@@ -84,10 +106,15 @@ for (const node of doc.getRoot().listNodes()) {
   done.add(mesh);
   const spec = PALETTE.find(([re]) => re.test(mesh.getName()))[1];
   if (!spec) { node.setMesh(null); continue; }
+  for (const prim of mesh.listPrimitives()) prim.setMaterial(material(spec));
+  if (/Finestra|Gealan/i.test(mesh.getName())) {
+    const m = node.getWorldMatrix();
+    for (const prim of mesh.listPrimitives()) splitGlass(mesh, prim, Math.hypot(m[0], m[1], m[2]));
+  }
   // Infissi e scale hanno profili dettagliatissimi: a scala di plastico non si vedono.
   const fine = /Finestra|Gealan|Porta|Scala/i.test(mesh.getName());
   for (const prim of mesh.listPrimitives()) {
-    prim.setMaterial(material(spec));
+    if (prim.getMaterial() === material(GLASS) && spec !== GLASS) { triBefore += tris(prim); triAfter += tris(prim); continue; }
     triBefore += tris(prim);
     if (tris(prim) > 200) {
       simplifyPrimitive(prim, { simplifier: MeshoptSimplifier, ratio: 0, error: fine ? 0.006 : 0.002, lockBorder: false });
