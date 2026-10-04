@@ -23,7 +23,13 @@
   #toolbar { position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; justify-content: center; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
   #toolbar button, #toolbar a { padding: 12px 18px; font-size: 15px; background: rgba(243,239,230,.92); color: var(--ink); }
   #status { font: 14px system-ui, sans-serif; color: #555; min-height: 1.4em; }
+  #ar { touch-action: none; }
+  body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  #toolbar button.on { background: var(--accent); color: #fff; }
+  #toolbar button:disabled { opacity: .5; }
+  #gesture { position: fixed; z-index: 6; left: 16px; right: 16px; top: calc(16px + env(safe-area-inset-top)); text-align: center; color: #fff; font: 600 14px system-ui, sans-serif; text-shadow: 0 1px 4px #000; pointer-events: none; }
 </style>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.0.0/dist/model-viewer.min.js"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -42,18 +48,23 @@
   <ol>
     <li>Premi <b>Avvia</b> e consenti l'uso della fotocamera.</li>
     <li>Inquadra la pianta esposta, tutta intera.</li>
-    <li>Muoviti attorno al foglio per vedere l'edificio da ogni lato.</li>
+    <li>Premi <b>Blocca</b> per fermare il modello, poi ruotalo e ingrandiscilo con le dita.</li>
+    <li>Con <b>Nella stanza</b> la casa si appoggia sul pavimento e ci puoi girare intorno.</li>
   </ol>
   <button id="start">Avvia</button>
-  <a class="btn ghost" href="stanza.html">Oppure mettilo nella stanza</a>
+  <a class="btn ghost" id="roomIntro" href="stanza.html">Mettilo nella stanza</a>
   <div id="status"></div>
 </section>
 
 <div id="hint" class="hidden"><span>Inquadra la pianta</span></div>
+<div id="gesture" class="hidden">Trascina per ruotare · pizzica per ingrandire · doppio tocco per ripristinare</div>
 <div id="toolbar" class="hidden">
-  <button id="spin">Ruota</button>
-  <a class="btn" href="stanza.html">Nella stanza</a>
+  <button id="lock" disabled>Blocca</button>
+  <button id="room">Nella stanza</button>
 </div>
+<!-- Usato solo per aprire l'AR di sistema: Quick Look su iPhone, Scene Viewer/WebXR su Android -->
+<model-viewer id="mv" loading="eager" src="assets/casa.glb" ios-src="assets/casa.usdz" ar ar-modes="webxr scene-viewer quick-look"
+  ar-placement="floor" ar-scale="auto" alt="Casa Curtatone" style="position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;top:0"></model-viewer>
 
 <script type="module">
 import * as THREE from 'three';
@@ -106,33 +117,108 @@ const modelReady = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderP
   pivot.add(m);
 });
 
-let spinning = false;
-$('spin').onclick = () => { spinning = !spinning; $('spin').textContent = spinning ? 'Ferma' : 'Ruota'; };
+// ---------- Blocca ----------
+// Il tracking dell'immagine si perde appena il foglio esce dall'inquadratura. "Blocca" stacca il
+// modello dall'immagine e lo lascia fermo davanti alla fotocamera, da ruotare e ingrandire col dito.
+const locked = new THREE.Group();
+locked.matrixAutoUpdate = false;
+scene.add(locked);
+let isLocked = false, tracking = false;
 
-anchor.onTargetFound = () => $('hint').classList.add('hidden');
-anchor.onTargetLost = () => $('hint').classList.remove('hidden');
+function setLocked(on) {
+  isLocked = on;
+  if (on) {
+    anchor.group.updateMatrixWorld(true);
+    locked.matrix.copy(anchor.group.matrixWorld);
+    locked.matrixWorldNeedsUpdate = true;
+    locked.add(stage);
+  } else {
+    anchor.group.add(stage);
+    tilt = 0;
+  }
+  $('lock').textContent = on ? 'Sblocca' : 'Blocca';
+  $('lock').classList.toggle('on', on);
+  $('lock').disabled = !on && !tracking;
+  $('hint').classList.toggle('hidden', on || tracking);
+}
+$('lock').onclick = () => setLocked(!isLocked);
+
+anchor.onTargetFound = () => { tracking = true; if (!isLocked) { $('hint').classList.add('hidden'); $('lock').disabled = false; } };
+anchor.onTargetLost = () => { tracking = false; if (!isLocked) { $('hint').classList.remove('hidden'); $('lock').disabled = true; } };
+
+// ---------- Gesti: trascina = ruota, pizzica = ingrandisci, doppio tocco = ripristina ----------
+let zoom = 1, tilt = 0, lastTap = 0;
+const pointers = new Map();
+let pinchStart = null;
+const el = renderer.domElement.parentElement;
+el.addEventListener('pointerdown', (e) => {
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinchStart = { d: Math.hypot(a.x - b.x, a.y - b.y), zoom };
+  }
+  if (pointers.size === 1) {
+    if (e.timeStamp - lastTap < 300) { zoom = 1; tilt = 0; pivot.rotation.y = 0; }
+    lastTap = e.timeStamp;
+  }
+});
+el.addEventListener('pointermove', (e) => {
+  const p = pointers.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (pointers.size === 1) {
+    pivot.rotation.y += dx * 0.01;
+    if (isLocked) tilt = Math.max(-1.45, Math.min(0.4, tilt - dy * 0.006)); // inclina solo da bloccato
+  } else if (pointers.size === 2 && pinchStart) {
+    const [a, b] = [...pointers.values()];
+    zoom = Math.max(0.3, Math.min(5, pinchStart.zoom * Math.hypot(a.x - b.x, a.y - b.y) / pinchStart.d));
+  }
+});
+const up = (e) => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchStart = null; };
+el.addEventListener('pointerup', up);
+el.addEventListener('pointercancel', up);
+
+// ---------- Nella stanza: AR di sistema, ancorata al pavimento, ci si cammina intorno ----------
+const mv = $('mv');
+let running = false;
+$('room').onclick = async () => {
+  if (!mv.canActivateAR) { location.href = 'stanza.html'; return; }
+  if (running) { mindar.stop(); running = false; } // libera la fotocamera per l'AR di sistema
+  mv.activateAR();
+  $('intro').classList.remove('hidden');
+  $('toolbar').classList.add('hidden');
+  $('hint').classList.add('hidden');
+  $('gesture').classList.add('hidden');
+  $('start').textContent = 'Torna alla pianta';
+  $('start').disabled = false;
+  status('');
+};
 
 $('start').onclick = async () => {
   $('start').disabled = true;
   status('Caricamento…');
   try {
     await Promise.all([modelReady, mindar.start()]);
+    running = true;
   } catch (e) {
     console.error(e);
     status('Fotocamera non disponibile. Prova "mettilo nella stanza".');
     $('start').disabled = false;
     return;
   }
+  setLocked(false);
   $('intro').classList.add('hidden');
-  $('hint').classList.remove('hidden');
   $('toolbar').classList.remove('hidden');
-  const clock = new THREE.Clock();
+  $('gesture').classList.remove('hidden');
   renderer.setAnimationLoop(() => {
-    const dt = clock.getDelta();
-    if (spinning) pivot.rotation.y += dt * 0.5;
+    pivot.scale.setScalar(zoom);
+    stage.rotation.x = Math.PI / 2 + tilt;
     renderer.render(scene, camera);
   });
 };
+
+// Dal pannello iniziale "mettilo nella stanza" apre direttamente l'AR di sistema.
+$('roomIntro').onclick = (e) => { e.preventDefault(); $('room').onclick(); };
 </script>
 </body>
 </html>

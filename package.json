@@ -4,7 +4,7 @@
   "scripts": {
     "server": "node tools/server.js",
     "converti": "node tools/converti.mjs",
-    "converti-ios": "node tools/converti.mjs --ios"
+    "converti-ios": "node tools/converti.mjs --ios && python tools/usdz.py"
   },
   "devDependencies": {
     "@gltf-transform/cli": "^4.5.1",

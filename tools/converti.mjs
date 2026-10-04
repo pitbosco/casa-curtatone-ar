@@ -159,9 +159,13 @@ for (const child of scene.listChildren()) { scene.removeChild(child); wrapper.ad
 scene.addChild(wrapper);
 console.log(`dimensioni originali (unità file): ${size.map((x) => x.toFixed(2)).join(' × ')}  → max ${TARGET_SIZE} m`);
 
+// Nomi validi ovunque: i nomi di Revit (es. "Vista 3D {3D}") rendono il file USDZ illeggibile per iPhone.
+const safe = (n, i) => (n || 'n').replace(/[^A-Za-z0-9_]/g, '_').replace(/^(?=\d)/, '_') + '_' + i;
+const r = doc.getRoot();
+[...r.listNodes(), ...r.listMeshes(), ...r.listMaterials(), ...r.listScenes()].forEach((o, i) => o.setName(safe(o.getName(), i)));
 await io.write(OUT, doc);
 let mb = statSync(OUT).size / 1e6;
-if (mb > 8) {
+if (mb > 8 && !IOS) { // la versione iOS resta non compressa: serve solo a generare il file USDZ
   console.log(`${mb.toFixed(1)} MB: comprimo la geometria (Draco, supportato anche da Scene Viewer)…`);
   await doc.transform(draco());
   await io.write(OUT, doc);
