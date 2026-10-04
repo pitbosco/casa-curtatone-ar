@@ -48,7 +48,7 @@
   <ol>
     <li>Premi <b>Avvia</b> e consenti l'uso della fotocamera.</li>
     <li>Inquadra la pianta esposta, tutta intera.</li>
-    <li>Premi <b>Blocca</b> per fermare il modello, poi ruotalo e ingrandiscilo con le dita.</li>
+    <li>Premi <b>Blocca</b>: il modello resta fermo sopra il foglio anche quando, girandoci intorno, il disegno non si riconosce più.</li>
     <li>Con <b>Nella stanza</b> la casa si appoggia sul pavimento e ci puoi girare intorno.</li>
   </ol>
   <button id="start">Avvia</button>
@@ -80,6 +80,7 @@ const mindar = new MindARThree({
   imageTargetSrc: 'assets/marker.mind',
   uiScanning: 'no', uiLoading: 'no', uiError: 'no',
   filterMinCF: 0.0001, filterBeta: 0.001, // meno tremolio
+  missTolerance: 10, // non perdere il marker per pochi fotogrammi sfocati
 });
 const { renderer, scene, camera } = mindar;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -117,25 +118,48 @@ const modelReady = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderP
   pivot.add(m);
 });
 
-// ---------- Blocca ----------
-// Il tracking dell'immagine si perde appena il foglio esce dall'inquadratura. "Blocca" stacca il
-// modello dall'immagine e lo lascia fermo davanti alla fotocamera, da ruotare e ingrandire col dito.
+// ---------- Blocca: il modello resta fermo nello spazio sopra il marker ----------
+// Il riconoscimento dell'immagine si perde quando il foglio è visto di sbieco o esce
+// dall'inquadratura. Da bloccato, quando il marker non si vede, la posizione del foglio è
+// mantenuta ruotandola al contrario di come ruota il telefono (giroscopio); quando il marker
+// torna visibile la posizione viene ricorretta.
 const locked = new THREE.Group();
 locked.matrixAutoUpdate = false;
 scene.add(locked);
 let isLocked = false, tracking = false;
 
+// Orientamento del telefono → rotazione della fotocamera (stessa convenzione di three.js).
+const gyro = { q: new THREE.Quaternion(), ok: false };
+{
+  const zee = new THREE.Vector3(0, 0, 1), euler = new THREE.Euler(), q0 = new THREE.Quaternion();
+  const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)), D = Math.PI / 180;
+  window.addEventListener('deviceorientation', (e) => {
+    if (e.alpha == null) return;
+    const screenAngle = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+    euler.set(e.beta * D, e.alpha * D, -e.gamma * D, 'YXZ');
+    gyro.q.setFromEuler(euler).multiply(q1).multiply(q0.setFromAxisAngle(zee, -screenAngle * D));
+    gyro.ok = true;
+  });
+}
+async function askGyro() { // iOS chiede il permesso, e solo dopo un tocco dell'utente
+  try { if (window.DeviceOrientationEvent?.requestPermission) await DeviceOrientationEvent.requestPermission(); } catch (e) { console.warn(e); }
+}
+
+const markerInWorld = new THREE.Matrix4(); // posa del marker nel riferimento del giroscopio
+const rot = new THREE.Matrix4();
+function updateLocked() {
+  if (tracking) {
+    locked.matrix.copy(anchor.group.matrix);
+    if (gyro.ok) markerInWorld.copy(anchor.group.matrix).premultiply(rot.makeRotationFromQuaternion(gyro.q));
+  } else if (gyro.ok) {
+    locked.matrix.copy(markerInWorld).premultiply(rot.makeRotationFromQuaternion(gyro.q).invert());
+  }
+  locked.matrixWorldNeedsUpdate = true;
+}
+
 function setLocked(on) {
   isLocked = on;
-  if (on) {
-    anchor.group.updateMatrixWorld(true);
-    locked.matrix.copy(anchor.group.matrixWorld);
-    locked.matrixWorldNeedsUpdate = true;
-    locked.add(stage);
-  } else {
-    anchor.group.add(stage);
-    tilt = 0;
-  }
+  if (on) { updateLocked(); locked.add(stage); } else anchor.group.add(stage);
   $('lock').textContent = on ? 'Sblocca' : 'Blocca';
   $('lock').classList.toggle('on', on);
   $('lock').disabled = !on && !tracking;
@@ -147,7 +171,7 @@ anchor.onTargetFound = () => { tracking = true; if (!isLocked) { $('hint').class
 anchor.onTargetLost = () => { tracking = false; if (!isLocked) { $('hint').classList.remove('hidden'); $('lock').disabled = true; } };
 
 // ---------- Gesti: trascina = ruota, pizzica = ingrandisci, doppio tocco = ripristina ----------
-let zoom = 1, tilt = 0, lastTap = 0;
+let zoom = 1, lastTap = 0;
 const pointers = new Map();
 let pinchStart = null;
 const el = renderer.domElement.parentElement;
@@ -158,7 +182,7 @@ el.addEventListener('pointerdown', (e) => {
     pinchStart = { d: Math.hypot(a.x - b.x, a.y - b.y), zoom };
   }
   if (pointers.size === 1) {
-    if (e.timeStamp - lastTap < 300) { zoom = 1; tilt = 0; pivot.rotation.y = 0; }
+    if (e.timeStamp - lastTap < 300) { zoom = 1; pivot.rotation.y = 0; }
     lastTap = e.timeStamp;
   }
 });
@@ -168,7 +192,6 @@ el.addEventListener('pointermove', (e) => {
   p.x = e.clientX; p.y = e.clientY;
   if (pointers.size === 1) {
     pivot.rotation.y += dx * 0.01;
-    if (isLocked) tilt = Math.max(-1.45, Math.min(0.4, tilt - dy * 0.006)); // inclina solo da bloccato
   } else if (pointers.size === 2 && pinchStart) {
     const [a, b] = [...pointers.values()];
     zoom = Math.max(0.3, Math.min(5, pinchStart.zoom * Math.hypot(a.x - b.x, a.y - b.y) / pinchStart.d));
@@ -195,6 +218,7 @@ $('room').onclick = async () => {
 };
 
 $('start').onclick = async () => {
+  askGyro();
   $('start').disabled = true;
   status('Caricamento…');
   try {
@@ -212,7 +236,7 @@ $('start').onclick = async () => {
   $('gesture').classList.remove('hidden');
   renderer.setAnimationLoop(() => {
     pivot.scale.setScalar(zoom);
-    stage.rotation.x = Math.PI / 2 + tilt;
+    if (isLocked) updateLocked();
     renderer.render(scene, camera);
   });
 };
