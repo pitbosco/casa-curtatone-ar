@@ -6,8 +6,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, prune, weld, join, flatten, center, meshopt } from '@gltf-transform/functions';
-import { MeshoptEncoder } from 'meshoptimizer';
+import { dedup, prune, weld, join, flatten, center, meshopt, simplifyPrimitive } from '@gltf-transform/functions';
+import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'assets', 'casa.glb');
@@ -24,7 +24,7 @@ if (/\.fbx$/i.test(input)) {
   const tmp = path.join(ROOT, 'revit', 'tmp');
   mkdirSync(tmp, { recursive: true });
   const exe = path.join(ROOT, 'node_modules', 'fbx2gltf', 'bin', 'Windows_NT', 'FBX2glTF.exe');
-  console.log('FBX → glTF…');
+  console.log("FBX → glTF…");
   execFileSync(exe, ['--binary', '--input', input, '--output', path.join(tmp, 'raw')], { stdio: 'inherit' });
   glbIn = path.join(tmp, 'raw.glb');
 }
@@ -37,7 +37,62 @@ const scene = doc.getRoot().getDefaultScene() ?? doc.getRoot().listScenes()[0];
 const count = () => doc.getRoot().listMeshes().length;
 console.log(`mesh in ingresso: ${count()}`);
 
-await doc.transform(dedup(), prune(), flatten(), weld(), join(), center({ pivot: 'below' }), prune());
+// L'FBX di Revit arriva senza materiali: li assegno in base al nome della famiglia.
+// Ordine importante: vince la prima regola che corrisponde.
+const PALETTE = [
+  [/^Livello/i, null], // elementi da scartare
+  [/Pannello sistema Vetro|Vetro/i, { color: 0x9fbccb, rough: 0.1, opacity: 0.45 }],
+  [/Finestra|Gealan|Porta/i, { color: 0x3b4045, rough: 0.5, metal: 0.2 }],
+  [/Ringhiera|Montante|Tipo di corrente/i, { color: 0x2f3133, rough: 0.5, metal: 0.4 }],
+  [/Tetto/i, { color: 0xaaa49a, rough: 0.9 }],
+  [/Pavimento|Solaio|Scala/i, { color: 0xcfc8b9, rough: 0.9 }],
+  [/Pilastro/i, { color: 0xd9d3c6, rough: 0.85 }],
+  [/topografic/i, { color: 0xb8b3a7, rough: 1 }],
+  [/Muro/i, { color: 0xeee9de, rough: 0.9 }],
+  [/./, { color: 0xdedad2, rough: 0.9 }],
+];
+const mats = new Map();
+const material = (spec) => {
+  if (!mats.has(spec)) {
+    const c = [(spec.color >> 16) & 255, (spec.color >> 8) & 255, spec.color & 255].map((x) => (x / 255) ** 2.2);
+    const m = doc.createMaterial().setBaseColorFactor([...c, spec.opacity ?? 1])
+      .setRoughnessFactor(spec.rough ?? 0.9).setMetallicFactor(spec.metal ?? 0);
+    if (spec.opacity) m.setAlphaMode('BLEND').setDoubleSided(true);
+    mats.set(spec, m);
+  }
+  return mats.get(spec);
+};
+
+// Revit duplica i vertici per ogni faccia: senza normali e UV (non ci sono texture) si possono saldare
+// e quindi semplificare. Il viewer userà l'ombreggiatura a facce piatte, adatta a un plastico.
+for (const mesh of doc.getRoot().listMeshes()) for (const prim of mesh.listPrimitives()) {
+  for (const sem of prim.listSemantics()) if (sem !== 'POSITION') prim.setAttribute(sem, null);
+}
+await doc.transform(dedup(), prune(), flatten(), weld());
+
+await MeshoptSimplifier.ready;
+let triBefore = 0, triAfter = 0;
+const tris = (p) => (p.getIndices()?.getCount() ?? 0) / 3;
+const done = new Set();
+for (const node of doc.getRoot().listNodes()) {
+  const mesh = node.getMesh(); if (!mesh || done.has(mesh)) continue;
+  done.add(mesh);
+  const spec = PALETTE.find(([re]) => re.test(mesh.getName()))[1];
+  if (!spec) { node.setMesh(null); continue; }
+  // Infissi e scale hanno profili dettagliatissimi: a scala di plastico non si vedono.
+  const fine = /Finestra|Gealan|Porta|Scala/i.test(mesh.getName());
+  for (const prim of mesh.listPrimitives()) {
+    prim.setMaterial(material(spec));
+    triBefore += tris(prim);
+    if (tris(prim) > 200) {
+      simplifyPrimitive(prim, { simplifier: MeshoptSimplifier, ratio: 0, error: fine ? 0.006 : 0.002, lockBorder: false });
+    }
+    triAfter += tris(prim);
+  }
+}
+console.log(`triangoli: ${Math.round(triBefore)} → ${Math.round(triAfter)}`);
+
+await doc.transform(prune(), join(), center({ pivot: 'below' }), prune());
 console.log(`mesh dopo l'unione: ${count()}`);
 
 // Scala tutto a TARGET_SIZE: Revit esporta in piedi/cm, qui non importa.
