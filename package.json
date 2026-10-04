@@ -1,0 +1,12 @@
+{
+  "name": "casa-curtatone-ar",
+  "private": true,
+  "scripts": {
+    "server": "node tools/server.js",
+    "converti": "node tools/converti.mjs"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "^4.5.1",
+    "fbx2gltf": "^0.9.7-p1"
+  }
+}

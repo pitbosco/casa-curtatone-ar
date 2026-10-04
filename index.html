@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Casa Curtatone · AR</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<style>
+  :root { --ink: #1d1d1b; --paper: #f3efe6; --accent: #b5452c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: Georgia, serif; color: var(--ink); }
+  #ar { position: fixed; inset: 0; }
+  .panel { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 32px 24px; background: var(--paper); }
+  .panel h1 { font-size: 40px; line-height: 1; margin: 0; letter-spacing: .02em; }
+  .panel .sub { font-size: 18px; margin: 0; }
+  .panel .bar { width: 72px; height: 6px; background: var(--accent); }
+  .panel ol { font: 16px/1.5 system-ui, sans-serif; padding-left: 20px; margin: 0; }
+  button, .btn { font: 600 17px system-ui, sans-serif; border: 0; border-radius: 999px; padding: 15px 24px; background: var(--ink); color: var(--paper); text-decoration: none; text-align: center; cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 2px solid var(--ink); }
+  .hidden { display: none !important; }
+  #hint { position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(70vw, 340px); aspect-ratio: 1; border: 3px solid rgba(255,255,255,.85); border-radius: 18px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.25); pointer-events: none; }
+  #hint span { position: absolute; left: 0; right: 0; bottom: -52px; text-align: center; color: #fff; font: 600 16px system-ui, sans-serif; text-shadow: 0 1px 4px #000; }
+  #toolbar { position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; justify-content: center; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  #toolbar button, #toolbar a { padding: 12px 18px; font-size: 15px; background: rgba(243,239,230,.92); color: var(--ink); }
+  #status { font: 14px system-ui, sans-serif; color: #555; min-height: 1.4em; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
+} }
+</script>
+</head>
+<body>
+<div id="ar"></div>
+
+<section class="panel" id="intro">
+  <h1>CASA<br>CURTATONE</h1>
+  <p class="sub">Elio Luzi · Torino</p>
+  <div class="bar"></div>
+  <ol>
+    <li>Premi <b>Avvia</b> e consenti l'uso della fotocamera.</li>
+    <li>Inquadra la pianta esposta, tutta intera.</li>
+    <li>Muoviti attorno al foglio per vedere l'edificio da ogni lato.</li>
+  </ol>
+  <button id="start">Avvia</button>
+  <a class="btn ghost" href="stanza.html">Oppure mettilo nella stanza</a>
+  <div id="status"></div>
+</section>
+
+<div id="hint" class="hidden"><span>Inquadra la pianta</span></div>
+<div id="toolbar" class="hidden">
+  <button id="spin">Ruota</button>
+  <a class="btn" href="stanza.html">Nella stanza</a>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { MindARThree } from 'mindar-image-three';
+
+const $ = (id) => document.getElementById(id);
+const status = (t) => { $('status').textContent = t; };
+
+const mindar = new MindARThree({
+  container: $('ar'),
+  imageTargetSrc: 'assets/marker.mind',
+  uiScanning: 'no', uiLoading: 'no', uiError: 'no',
+  filterMinCF: 0.0001, filterBeta: 0.001, // meno tremolio
+});
+const { renderer, scene, camera } = mindar;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8070, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 2);
+sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+
+// Nell'ancora il marker è il piano XY, largo 1 unità, con Z verso chi guarda.
+const anchor = mindar.addAnchor(0);
+const stage = new THREE.Group();
+stage.rotation.x = Math.PI / 2; // il modello (Y in alto) si alza dal foglio
+anchor.group.add(stage);
+
+sun.position.set(0.6, 1.5, 0.8); sun.target = stage;
+stage.add(sun);
+Object.assign(sun.shadow.camera, { left: -1, right: 1, top: 1, bottom: -1, near: .1, far: 5 });
+
+const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), new THREE.ShadowMaterial({ opacity: .3 }));
+shadowPlane.rotation.x = -Math.PI / 2; shadowPlane.receiveShadow = true;
+stage.add(shadowPlane);
+
+const pivot = new THREE.Group();
+stage.add(pivot);
+
+const modelReady = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync('assets/casa.glb').then((gltf) => {
+  const m = gltf.scene;
+  m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  // Normalizza: impronta grande l'80% del marker, centrata, appoggiata sul foglio.
+  const box = new THREE.Box3().setFromObject(m), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  const k = 0.8 / Math.max(size.x, size.z);
+  m.scale.setScalar(k);
+  m.position.set(-c.x * k, -box.min.y * k, -c.z * k);
+  pivot.add(m);
+});
+
+let spinning = false;
+$('spin').onclick = () => { spinning = !spinning; $('spin').textContent = spinning ? 'Ferma' : 'Ruota'; };
+
+anchor.onTargetFound = () => $('hint').classList.add('hidden');
+anchor.onTargetLost = () => $('hint').classList.remove('hidden');
+
+$('start').onclick = async () => {
+  $('start').disabled = true;
+  status('Caricamento…');
+  try {
+    await Promise.all([modelReady, mindar.start()]);
+  } catch (e) {
+    console.error(e);
+    status('Fotocamera non disponibile. Prova "mettilo nella stanza".');
+    $('start').disabled = false;
+    return;
+  }
+  $('intro').classList.add('hidden');
+  $('hint').classList.remove('hidden');
+  $('toolbar').classList.remove('hidden');
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    const dt = clock.getDelta();
+    if (spinning) pivot.rotation.y += dt * 0.5;
+    renderer.render(scene, camera);
+  });
+};
+</script>
+</body>
+</html>

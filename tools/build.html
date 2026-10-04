@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Build marker e modello</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 24px; background: #eee; }
+  canvas { width: 420px; border: 1px solid #999; background: #fff; }
+  #log { white-space: pre-wrap; font-family: monospace; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js" type="module"></script>
+</head>
+<body>
+<h1>Build: marker + modello segnaposto</h1>
+<p>
+  <button id="btnMarker">1. Genera e compila marker</button>
+  <button id="btnModel">2. Genera modello segnaposto</button>
+</p>
+<canvas id="c" width="1200" height="1200"></canvas>
+<div id="log"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+const log = (m) => { document.getElementById('log').textContent += m + '\n'; console.log(m); };
+const save = async (name, body) => {
+  const r = await fetch('/save?name=' + encodeURIComponent(name), { method: 'POST', body });
+  log(`salvato ${name}: ${r.status}`);
+};
+
+// ---------- Marker ----------
+// Disegno "pianta stilizzata" dentro una cornice: serve molto dettaglio non ripetitivo
+// perché il tracking riconosce l'immagine dai suoi punti caratteristici.
+function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+
+function drawMarker(ctx, S) {
+  const r = rng(1957);
+  const ink = '#1d1d1b', paper = '#f3efe6', accent = '#b5452c';
+  ctx.fillStyle = paper; ctx.fillRect(0, 0, S, S);
+
+  // cornice spessa
+  ctx.fillStyle = ink; ctx.fillRect(0, 0, S, S);
+  ctx.fillStyle = paper; ctx.fillRect(60, 60, S - 120, S - 120);
+  ctx.strokeStyle = ink; ctx.lineWidth = 4; ctx.strokeRect(84, 84, S - 168, S - 168);
+
+  // area disegno
+  const x0 = 120, y0 = 120, W = S - 240, H = S - 400;
+
+  // griglia strutturale sottile, passo irregolare
+  ctx.strokeStyle = 'rgba(29,29,27,.25)'; ctx.lineWidth = 1.5; ctx.setLineDash([12, 6, 2, 6]);
+  const xs = [x0], ys = [y0];
+  while (xs.at(-1) < x0 + W - 60) xs.push(xs.at(-1) + 70 + r() * 110);
+  while (ys.at(-1) < y0 + H - 60) ys.push(ys.at(-1) + 70 + r() * 110);
+  xs.push(x0 + W); ys.push(y0 + H);
+  for (const x of xs) { ctx.beginPath(); ctx.moveTo(x, y0 - 20); ctx.lineTo(x, y0 + H + 20); ctx.stroke(); }
+  for (const y of ys) { ctx.beginPath(); ctx.moveTo(x0 - 20, y); ctx.lineTo(x0 + W + 20, y); ctx.stroke(); }
+  ctx.setLineDash([]);
+
+  // stanze: campiture e retini in celle casuali
+  for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < ys.length - 1; j++) {
+    const cx = xs[i], cy = ys[j], cw = xs[i + 1] - cx, ch = ys[j + 1] - cy, t = r();
+    ctx.save(); ctx.beginPath(); ctx.rect(cx, cy, cw, ch); ctx.clip();
+    if (t < 0.18) { ctx.fillStyle = 'rgba(29,29,27,.12)'; ctx.fillRect(cx, cy, cw, ch); }
+    else if (t < 0.36) {
+      ctx.strokeStyle = 'rgba(29,29,27,.45)'; ctx.lineWidth = 1.5;
+      const a = r() < .5 ? 1 : -1;
+      for (let k = -ch; k < cw + ch; k += 9 + r() * 6) { ctx.beginPath(); ctx.moveTo(cx + k, cy); ctx.lineTo(cx + k + a * ch, cy + ch); ctx.stroke(); }
+    } else if (t < 0.46) {
+      ctx.fillStyle = 'rgba(181,69,44,.22)'; ctx.fillRect(cx, cy, cw, ch);
+    } else if (t < 0.56) {
+      // scala
+      ctx.strokeStyle = ink; ctx.lineWidth = 2;
+      const n = 6 + Math.floor(r() * 8);
+      for (let k = 1; k < n; k++) { const yy = cy + ch * k / n; ctx.beginPath(); ctx.moveTo(cx + 8, yy); ctx.lineTo(cx + cw - 8, yy); ctx.stroke(); }
+    }
+    ctx.restore();
+    // numero locale
+    if (r() < 0.55) {
+      ctx.fillStyle = ink; ctx.font = `${14 + Math.floor(r() * 10)}px monospace`;
+      ctx.fillText(String(Math.floor(r() * 90) + 10), cx + 8 + r() * (cw - 40), cy + 22 + r() * (ch - 30));
+    }
+  }
+
+  // muri spessi lungo la griglia, con aperture (porte) casuali
+  ctx.fillStyle = ink;
+  const wall = (ax, ay, bx, by, th) => {
+    if (ay === by) ctx.fillRect(Math.min(ax, bx), ay - th / 2, Math.abs(bx - ax), th);
+    else ctx.fillRect(ax - th / 2, Math.min(ay, by), th, Math.abs(by - ay));
+  };
+  for (let j = 0; j < ys.length; j++) for (let i = 0; i < xs.length - 1; i++) {
+    const edge = j === 0 || j === ys.length - 1;
+    if (!edge && r() < 0.35) continue;
+    const a = xs[i], b = xs[i + 1], th = edge ? 14 : 7;
+    if (!edge && r() < 0.5 && b - a > 70) {
+      const d = a + 15 + r() * (b - a - 60);
+      wall(a, ys[j], d, ys[j], th); wall(d + 40, ys[j], b, ys[j], th);
+      ctx.strokeStyle = ink; ctx.lineWidth = 1.5; ctx.beginPath();
+      ctx.arc(d, ys[j], 40, 0, Math.PI / 2 * (r() < .5 ? 1 : -1), r() < .5); ctx.stroke();
+    } else wall(a, ys[j], b, ys[j], th);
+  }
+  for (let i = 0; i < xs.length; i++) for (let j = 0; j < ys.length - 1; j++) {
+    const edge = i === 0 || i === xs.length - 1;
+    if (!edge && r() < 0.4) continue;
+    const a = ys[j], b = ys[j + 1], th = edge ? 14 : 7;
+    if (edge && r() < 0.5) { // finestra a nastro
+      wall(xs[i], a, xs[i], a + 12, th); wall(xs[i], b - 12, xs[i], b, th);
+      ctx.strokeStyle = ink; ctx.lineWidth = 1.5;
+      for (const o of [-5, 0, 5]) { ctx.beginPath(); ctx.moveTo(xs[i] + o, a + 12); ctx.lineTo(xs[i] + o, b - 12); ctx.stroke(); }
+    } else wall(xs[i], a, xs[i], b, th);
+  }
+
+  // pilastri
+  for (const x of xs) for (const y of ys) if (r() < 0.5) ctx.fillRect(x - 9, y - 9, 18, 18);
+
+  // nord e scala grafica
+  ctx.save(); ctx.translate(x0 + W - 50, y0 + H + 80);
+  ctx.strokeStyle = ink; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = accent; ctx.beginPath(); ctx.moveTo(0, -46); ctx.lineTo(13, 10); ctx.lineTo(0, 2); ctx.lineTo(-13, 10); ctx.fill();
+  ctx.fillStyle = ink; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('N', 0, 30);
+  ctx.restore();
+  for (let k = 0; k < 5; k++) { ctx.fillStyle = k % 2 ? paper : ink; ctx.fillRect(x0 + W - 380 + k * 50, y0 + H + 110, 50, 12); }
+  ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.strokeRect(x0 + W - 380, y0 + H + 110, 250, 12);
+  ctx.fillStyle = ink; ctx.font = '16px monospace'; ctx.textAlign = 'left';
+  ['0', '5', '10 m'].forEach((t, k) => ctx.fillText(t, x0 + W - 384 + k * 125, y0 + H + 145));
+
+  // cartiglio
+  ctx.fillStyle = ink; ctx.textAlign = 'left';
+  ctx.font = 'bold 64px Georgia, serif'; ctx.fillText('CASA CURTATONE', x0, y0 + H + 105);
+  ctx.font = '28px Georgia, serif'; ctx.fillText('Elio Luzi · Torino', x0, y0 + H + 150);
+  ctx.fillStyle = accent; ctx.fillRect(x0, y0 + H + 172, 120, 10);
+  ctx.fillStyle = ink; ctx.font = '18px monospace'; ctx.fillText('INQUADRA PER VEDERE IL MODELLO 3D', x0 + 140, y0 + H + 183);
+}
+
+document.getElementById('btnMarker').onclick = async () => {
+  const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+  drawMarker(ctx, canvas.width);
+  const png = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+  await save('marker.png', png);
+
+  const img = new Image(); img.src = URL.createObjectURL(png); await img.decode();
+  log('compilazione marker…');
+  const compiler = new window.MINDAR.IMAGE.Compiler();
+  await compiler.compileImageTargets([img], (p) => { if (Math.round(p) % 20 === 0) log(`  ${p.toFixed(0)}%`); });
+  const data = await compiler.exportData();
+  await save('marker.mind', new Blob([data]));
+  log('MARKER OK');
+};
+
+// ---------- Modello segnaposto ----------
+// Volume razionalista generico, alto ~0.5 m (scala da tavolo), Y in alto, base a y=0.
+document.getElementById('btnModel').onclick = async () => {
+  const g = new THREE.Group(); g.name = 'segnaposto';
+  const M = (c, r = .8) => new THREE.MeshStandardMaterial({ color: c, roughness: r });
+  const box = (w, h, d, x, y, z, m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y + h / 2, z); g.add(b); };
+  const intonaco = M(0xe8e2d4), solaio = M(0x9a958c), vetro = M(0x3d5566, .2), base = M(0x6f6a62);
+  const W = .42, D = .2, fh = .055, n = 7;
+  box(W + .04, .012, D + .04, 0, 0, 0, base);
+  for (let x = -W / 2 + .02; x <= W / 2; x += .1) box(.012, fh, .012, x, .012, D / 2 - .02, solaio); // pilotis
+  box(W * .45, fh, D * .7, W * .2, .012, -D * .1, intonaco);                                       // atrio
+  for (let i = 1; i < n; i++) {
+    const y = .012 + i * fh;
+    box(W, .008, D, 0, y, 0, solaio);
+    box(W - .01, fh - .008, D - .02, 0, y + .008, 0, vetro);
+    for (let x = -W / 2 + .03; x < W / 2; x += .06) box(.035, fh - .008, .006, x, y + .008, D / 2 - .007, intonaco);
+    if (i % 2) box(W * .9, .006, .03, 0, y, D / 2 + .012, solaio); // balconi
+  }
+  box(W, .01, D, 0, .012 + n * fh, 0, solaio);
+  box(W * .3, .03, D * .5, -W * .25, .022 + n * fh, 0, intonaco);
+
+  const glb = await new GLTFExporter().parseAsync(g, { binary: true });
+  await save('casa.glb', new Blob([glb]));
+  log('MODELLO OK');
+};
+</script>
+</body>
+</html>

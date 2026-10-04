@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Casa Curtatone · 3D</title>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.0.0/dist/model-viewer.min.js"></script>
+<style>
+  :root { --ink: #1d1d1b; --paper: #f3efe6; --accent: #b5452c; }
+  html, body { margin: 0; height: 100%; background: var(--paper); font-family: Georgia, serif; color: var(--ink); }
+  header { position: fixed; z-index: 2; top: 0; left: 0; right: 0; padding: 20px 16px; display: flex; justify-content: space-between; align-items: baseline; }
+  header h1 { margin: 0; font-size: 22px; }
+  header a { font: 15px system-ui, sans-serif; color: var(--ink); }
+  model-viewer { width: 100%; height: 100%; --poster-color: transparent; }
+  .ar { position: absolute; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); font: 600 17px system-ui, sans-serif; border: 0; border-radius: 999px; padding: 15px 26px; background: var(--ink); color: var(--paper); white-space: nowrap; }
+  .note { position: absolute; left: 0; right: 0; bottom: calc(90px + env(safe-area-inset-bottom)); text-align: center; font: 14px system-ui, sans-serif; color: #555; }
+</style>
+</head>
+<body>
+<header><h1>Casa Curtatone</h1><a href="index.html">← sulla pianta</a></header>
+<model-viewer src="assets/casa.glb" alt="Modello 3D di Casa Curtatone, Elio Luzi"
+  ar ar-modes="webxr scene-viewer quick-look" ar-placement="floor" ar-scale="auto"
+  camera-controls touch-action="pan-y" auto-rotate shadow-intensity="1" exposure="1.05"
+  camera-orbit="35deg 70deg auto">
+  <button slot="ar-button" class="ar">Mettilo nella stanza</button>
+  <div class="note" slot="ar-button">Trascina per ruotare · pizzica per ingrandire</div>
+</model-viewer>
+</body>
+</html>
