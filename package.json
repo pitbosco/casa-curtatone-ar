@@ -10,6 +10,8 @@
     "@gltf-transform/cli": "^4.5.1",
     "draco3dgltf": "^1.5.7",
     "fbx2gltf": "^0.9.7-p1",
+    "mind-ar": "^1.2.5",
+    "pngjs": "^7.0.0",
     "qrcode": "^1.5.4"
   }
 }

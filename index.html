@@ -47,7 +47,7 @@
   <div class="bar"></div>
   <ol>
     <li>Premi <b>Avvia</b> e consenti l'uso della fotocamera.</li>
-    <li>Inquadra la pianta esposta, tutta intera.</li>
+    <li>Inquadra il disegno esposto, tutto intero.</li>
     <li>Premi <b>Blocca</b>: il modello resta fermo sopra il foglio anche quando, girandoci intorno, il disegno non si riconosce più.</li>
     <li>Con <b>Nella stanza</b> la casa si appoggia sul pavimento e ci puoi girare intorno.</li>
   </ol>
@@ -56,7 +56,7 @@
   <div id="status"></div>
 </section>
 
-<div id="hint" class="hidden"><span>Inquadra la pianta</span></div>
+<div id="hint" class="hidden"><span>Inquadra il disegno</span></div>
 <div id="gesture" class="hidden">Trascina per ruotare · pizzica per ingrandire · doppio tocco per ripristinare</div>
 <div id="toolbar" class="hidden">
   <button id="lock" disabled>Blocca</button>
@@ -77,7 +77,7 @@ const status = (t) => { $('status').textContent = t; };
 
 const mindar = new MindARThree({
   container: $('ar'),
-  imageTargetSrc: 'assets/marker.mind',
+  imageTargetSrc: 'assets/marker-pianta.mind', // 0: icona della mostra, 1: variante con cornice e testi
   uiScanning: 'no', uiLoading: 'no', uiError: 'no',
   filterMinCF: 0.0001, filterBeta: 0.001, // meno tremolio
   missTolerance: 10, // non perdere il marker per pochi fotogrammi sfocati
@@ -91,7 +91,8 @@ const sun = new THREE.DirectionalLight(0xffffff, 2);
 sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
 
 // Nell'ancora il marker è il piano XY, largo 1 unità, con Z verso chi guarda.
-const anchor = mindar.addAnchor(0);
+const anchors = [mindar.addAnchor(0), mindar.addAnchor(1)]; // stessa casa su entrambi i marker
+let anchor = anchors[0];
 const stage = new THREE.Group();
 stage.rotation.x = Math.PI / 2; // il modello (Y in alto) si alza dal foglio
 anchor.group.add(stage);
@@ -167,8 +168,17 @@ function setLocked(on) {
 }
 $('lock').onclick = () => setLocked(!isLocked);
 
-anchor.onTargetFound = () => { tracking = true; if (!isLocked) { $('hint').classList.add('hidden'); $('lock').disabled = false; } };
-anchor.onTargetLost = () => { tracking = false; if (!isLocked) { $('hint').classList.remove('hidden'); $('lock').disabled = true; } };
+for (const a of anchors) {
+  a.onTargetFound = () => {
+    anchor = a; tracking = true;
+    if (!isLocked) { a.group.add(stage); $('hint').classList.add('hidden'); $('lock').disabled = false; }
+  };
+  a.onTargetLost = () => {
+    if (a !== anchor) return;
+    tracking = false;
+    if (!isLocked) { $('hint').classList.remove('hidden'); $('lock').disabled = true; }
+  };
+}
 
 // ---------- Gesti: trascina = ruota, pizzica = ingrandisci, doppio tocco = ripristina ----------
 let zoom = 1, lastTap = 0;
