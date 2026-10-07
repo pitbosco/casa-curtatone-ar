@@ -60,7 +60,7 @@
   </button>
   <a class="choice secondary" id="roomIntro" href="stanza.html">
     <span class="t">Dove vuoi tu</span>
-    <span class="d">Appoggia la casa su un tavolo o sul pavimento e camminale intorno.</span>
+    <span class="d">Appoggia la casa su un tavolo o sul pavimento.</span>
   </a>
   <p class="note">Il telefono chiederà dei permessi: premi sempre <b>«Consenti»</b>.</p>
   <div id="status" role="status"></div>
@@ -93,6 +93,20 @@ function message(text, seconds = 0) {
   $('message').classList.toggle('hidden', !text);
   if (text && seconds) messageTimer = setTimeout(() => $('message').classList.add('hidden'), seconds * 1000);
 }
+
+// Safari dà alla pagina una fotocamera a 640×480: chiediamo 1280×720, il disegno si riconosce con più
+// precisione e il modello trema meno.
+{
+  const md = navigator.mediaDevices, original = md && md.getUserMedia && md.getUserMedia.bind(md);
+  if (original) md.getUserMedia = (c) => {
+    if (!c || !c.video || c.video === true) return original(c);
+    return original({ ...c, video: { ...c.video, width: { ideal: 1280 }, height: { ideal: 720 } } })
+      .catch(() => original(c)); // telefono che non lo supporta: risoluzione normale
+  };
+}
+
+// Stabilità sul disegno: ?stabile=1 (più reattivo) … 3 (più fermo). Predefinito 2.
+const STABILE = Math.min(3, Math.max(1, Number(new URLSearchParams(location.search).get('stabile')) || 2));
 
 const mindar = new MindARThree({
   container: $('ar'),
@@ -216,8 +230,10 @@ function updateSheet() {
       else {
         // Smorzamento adattivo: piccole differenze = tremolio → quasi fermo;
         // grandi differenze = ci si è spostati davvero → segue subito.
-        const kp = Math.min(1, 0.06 + world.p.distanceTo(meas.p) * 6);
-        const kq = Math.min(1, 0.06 + world.q.angleTo(meas.q) * 4);
+        // Sotto una soglia (tremolio) quasi non si muove; oltre la soglia segue rapidamente.
+        const base = [0, 0.08, 0.04, 0.02][STABILE], soglia = [0, 0.01, 0.025, 0.04][STABILE];
+        const kp = Math.min(1, base + Math.max(0, world.p.distanceTo(meas.p) - soglia) * 5);
+        const kq = Math.min(1, base + Math.max(0, world.q.angleTo(meas.q) - soglia * 1.2) * 3);
         world.p.lerp(meas.p, kp); world.q.slerp(meas.q, kq); world.s.lerp(meas.s, kp);
       }
     }
