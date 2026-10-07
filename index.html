@@ -6,28 +6,31 @@
 <title>Casa Curtatone · AR</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <style>
-  :root { --ink: #1d1d1b; --paper: #f3efe6; --accent: #b5452c; }
+  :root { --ink: #1d1d1b; --paper: #f3efe6; --blu: #011858; --accent: #b5452c; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: Georgia, serif; color: var(--ink); }
-  #ar { position: fixed; inset: 0; }
-  .panel { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 32px 24px; background: var(--paper); }
-  .panel h1 { font-size: 40px; line-height: 1; margin: 0; letter-spacing: .02em; }
-  .panel .sub { font-size: 18px; margin: 0; }
-  .panel .bar { width: 72px; height: 6px; background: var(--accent); }
-  .panel ol { font: 16px/1.5 system-ui, sans-serif; padding-left: 20px; margin: 0; }
-  button, .btn { font: 600 17px system-ui, sans-serif; border: 0; border-radius: 999px; padding: 15px 24px; background: var(--ink); color: var(--paper); text-decoration: none; text-align: center; cursor: pointer; }
-  .btn.ghost { background: transparent; color: var(--ink); border: 2px solid var(--ink); }
-  .hidden { display: none !important; }
-  #hint { position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(70vw, 340px); aspect-ratio: 1; border: 3px solid rgba(255,255,255,.85); border-radius: 18px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.25); pointer-events: none; }
-  #hint span { position: absolute; left: 0; right: 0; bottom: -52px; text-align: center; color: #fff; font: 600 16px system-ui, sans-serif; text-shadow: 0 1px 4px #000; }
-  #toolbar { position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; justify-content: center; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
-  #toolbar button, #toolbar a { padding: 12px 18px; font-size: 15px; background: rgba(243,239,230,.92); color: var(--ink); }
-  #status { font: 14px system-ui, sans-serif; color: #555; min-height: 1.4em; }
-  #ar { touch-action: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); }
   body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
-  #toolbar button.on { background: var(--accent); color: #fff; }
-  #toolbar button:disabled { opacity: .5; }
-  #gesture { position: fixed; z-index: 6; left: 16px; right: 16px; top: calc(16px + env(safe-area-inset-top)); text-align: center; color: #fff; font: 600 14px system-ui, sans-serif; text-shadow: 0 1px 4px #000; pointer-events: none; }
+  #ar { position: fixed; inset: 0; touch-action: none; }
+  .hidden { display: none !important; }
+
+  /* Schermata iniziale: testo grande, poche parole, pulsanti grandi */
+  .panel { position: fixed; inset: 0; z-index: 10; overflow-y: auto; display: flex; flex-direction: column; justify-content: center; gap: 22px; padding: 28px 22px calc(28px + env(safe-area-inset-bottom)); background: var(--paper); }
+  .panel h1 { font: 700 42px/1.05 Georgia, serif; margin: 0; color: var(--blu); }
+  .panel .sub { font: 20px/1.3 Georgia, serif; margin: -10px 0 0; color: var(--blu); }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  .steps li { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: start; font-size: 20px; line-height: 1.35; }
+  .steps .n { width: 40px; height: 40px; border-radius: 50%; background: var(--blu); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 20px; }
+  button, .btn { font: 700 21px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif; border: 0; border-radius: 16px; min-height: 64px; padding: 16px 22px; background: var(--blu); color: #fff; text-decoration: none; text-align: center; cursor: pointer; }
+  .btn.secondary { background: #fff; color: var(--blu); border: 3px solid var(--blu); }
+  #status { font-size: 19px; line-height: 1.4; color: var(--accent); min-height: 1.4em; text-align: center; }
+
+  /* Durante l'AR */
+  .pill { background: rgba(255,255,255,.94); color: var(--ink); border-radius: 14px; padding: 12px 16px; font-size: 19px; line-height: 1.3; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,.25); }
+  #frame { position: fixed; z-index: 5; left: 50%; top: 45%; transform: translate(-50%, -50%); width: min(72vw, 360px); aspect-ratio: 1; border: 4px dashed rgba(255,255,255,.95); border-radius: 18px; pointer-events: none; }
+  #message { position: fixed; z-index: 6; left: 16px; right: 16px; top: calc(16px + env(safe-area-inset-top)); pointer-events: none; }
+  #toolbar { position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; display: flex; gap: 12px; justify-content: center; align-items: center; padding: 14px 14px calc(16px + env(safe-area-inset-bottom)); }
+  #toolbar .round { width: 64px; height: 64px; padding: 0; border-radius: 50%; font-size: 32px; line-height: 1; background: rgba(255,255,255,.94); color: var(--blu); box-shadow: 0 2px 12px rgba(0,0,0,.25); }
+  #toolbar #room { font-size: 19px; padding: 14px 18px; box-shadow: 0 2px 12px rgba(0,0,0,.25); }
 </style>
 <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.0.0/dist/model-viewer.min.js"></script>
 <script type="importmap">
@@ -42,24 +45,24 @@
 <div id="ar"></div>
 
 <section class="panel" id="intro">
-  <h1>CASA<br>CURTATONE</h1>
-  <p class="sub">Elio Luzi · Torino</p>
-  <div class="bar"></div>
-  <ol>
-    <li>Premi <b>Avvia</b> e consenti l'uso della fotocamera.</li>
-    <li>Inquadra il disegno esposto, tutto intero.</li>
-    <li>Premi <b>Blocca</b>: il modello resta fermo sopra il foglio anche quando, girandoci intorno, il disegno non si riconosce più.</li>
-    <li>Con <b>Nella stanza</b> la casa si appoggia sul pavimento e ci puoi girare intorno.</li>
+  <h1>Casa Curtatone</h1>
+  <p class="sub">Sergio Jaretti · Elio Luzi — Torino</p>
+  <ol class="steps">
+    <li><span class="n">1</span><span>Premi <b>«Inizia»</b>.</span></li>
+    <li><span class="n">2</span><span>Il telefono chiede uno o due permessi: premi sempre <b>«Consenti»</b>.</span></li>
+    <li><span class="n">3</span><span>Inquadra il disegno: la casa compare sopra il foglio.</span></li>
   </ol>
-  <button id="start">Avvia</button>
-  <a class="btn ghost" id="roomIntro" href="stanza.html">Mettilo nella stanza</a>
-  <div id="status"></div>
+  <button id="start">Inizia</button>
+  <a class="btn secondary" id="roomIntro" href="stanza.html">Metti la casa nella stanza</a>
+  <div id="status" role="status"></div>
 </section>
 
-<div id="hint" class="hidden"><span>Inquadra il disegno</span></div>
-<div id="gesture" class="hidden">Trascina per ruotare · pizzica per ingrandire · doppio tocco per ripristinare</div>
+<div id="frame" class="hidden"></div>
+<div id="message" class="hidden"><div class="pill" id="messageText"></div></div>
 <div id="toolbar" class="hidden">
-  <button id="lock" disabled>Blocca</button>
+  <button class="round" id="zoomOut" aria-label="Rimpicciolisci">−</button>
+  <button class="round" id="zoomIn" aria-label="Ingrandisci">+</button>
+  <button class="round" id="turn" aria-label="Ruota la casa">⟳</button>
   <button id="room">Nella stanza</button>
 </div>
 <!-- Usato solo per aprire l'AR di sistema: Quick Look su iPhone, Scene Viewer/WebXR su Android -->
@@ -74,13 +77,22 @@ import { MindARThree } from 'mindar-image-three';
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
+let messageTimer = 0;
+function message(text, seconds = 0) {
+  clearTimeout(messageTimer);
+  $('messageText').textContent = text;
+  $('message').classList.toggle('hidden', !text);
+  if (text && seconds) messageTimer = setTimeout(() => $('message').classList.add('hidden'), seconds * 1000);
+}
 
 const mindar = new MindARThree({
   container: $('ar'),
   imageTargetSrc: 'assets/marker-pianta.mind', // 0: icona della mostra, 1: variante con cornice e testi
   uiScanning: 'no', uiLoading: 'no', uiError: 'no',
-  filterMinCF: 0.0001, filterBeta: 0.001, // meno tremolio
-  missTolerance: 10, // non perdere il marker per pochi fotogrammi sfocati
+  // Filtro di MindAR quasi disattivato: lo smorzamento lo facciamo noi nello spazio (vedi sotto),
+  // altrimenti il modello resta indietro e "scivola" quando si muove il telefono.
+  filterMinCF: 1, filterBeta: 1000,
+  missTolerance: 10,
 });
 const { renderer, scene, camera } = mindar;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -90,17 +102,19 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8070, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 2);
 sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
 
-// Nell'ancora il marker è il piano XY, largo 1 unità, con Z verso chi guarda.
-const anchors = [mindar.addAnchor(0), mindar.addAnchor(1)]; // stessa casa su entrambi i marker
-let anchor = anchors[0];
+// Il modello sta in un gruppo nostro, posizionato ogni fotogramma sopra il foglio.
+// Nel riferimento del foglio: piano XY largo 1 unità, Z verso chi guarda.
+const sheet = new THREE.Group();
+sheet.matrixAutoUpdate = false;
+sheet.visible = false;
+scene.add(sheet);
 const stage = new THREE.Group();
 stage.rotation.x = Math.PI / 2; // il modello (Y in alto) si alza dal foglio
-anchor.group.add(stage);
+sheet.add(stage);
 
 sun.position.set(0.6, 1.5, 0.8); sun.target = stage;
 stage.add(sun);
 Object.assign(sun.shadow.camera, { left: -1, right: 1, top: 1, bottom: -1, near: .1, far: 5 });
-
 const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), new THREE.ShadowMaterial({ opacity: .3 }));
 shadowPlane.rotation.x = -Math.PI / 2; shadowPlane.receiveShadow = true;
 stage.add(shadowPlane);
@@ -119,17 +133,14 @@ const modelReady = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderP
   pivot.add(m);
 });
 
-// ---------- Blocca: il modello resta fermo nello spazio sopra il marker ----------
-// Il riconoscimento dell'immagine si perde quando il foglio è visto di sbieco o esce
-// dall'inquadratura. Da bloccato, quando il marker non si vede, la posizione del foglio è
-// mantenuta ruotandola al contrario di come ruota il telefono (giroscopio); quando il marker
-// torna visibile la posizione viene ricorretta.
-const locked = new THREE.Group();
-locked.matrixAutoUpdate = false;
-scene.add(locked);
-let isLocked = false, tracking = false;
+// ---------- Aggancio al foglio ----------
+// Il foglio è fermo sul tavolo. Teniamo la sua posizione in un riferimento che non ruota con il
+// telefono (giroscopio): le rotazioni del telefono vengono compensate subito, senza ritardo,
+// e il tremolio del riconoscimento si smorza lì, dove il foglio non si muove.
+// Se il disegno non si riconosce per un po' (visto di sbieco), la casa resta dov'era.
+const anchors = [mindar.addAnchor(0), mindar.addAnchor(1)]; // stessa casa su entrambi i marker
+let anchor = null, tracking = false, lostAt = 0, everFound = false;
 
-// Orientamento del telefono → rotazione della fotocamera (stessa convenzione di three.js).
 const gyro = { q: new THREE.Quaternion(), ok: false };
 {
   const zee = new THREE.Vector3(0, 0, 1), euler = new THREE.Euler(), q0 = new THREE.Quaternion();
@@ -146,42 +157,61 @@ async function askGyro() { // iOS chiede il permesso, e solo dopo un tocco dell'
   try { if (window.DeviceOrientationEvent?.requestPermission) await DeviceOrientationEvent.requestPermission(); } catch (e) { console.warn(e); }
 }
 
-const markerInWorld = new THREE.Matrix4(); // posa del marker nel riferimento del giroscopio
-const rot = new THREE.Matrix4();
-function updateLocked() {
-  if (tracking) {
-    locked.matrix.copy(anchor.group.matrix);
-    if (gyro.ok) markerInWorld.copy(anchor.group.matrix).premultiply(rot.makeRotationFromQuaternion(gyro.q));
-  } else if (gyro.ok) {
-    locked.matrix.copy(markerInWorld).premultiply(rot.makeRotationFromQuaternion(gyro.q).invert());
-  }
-  locked.matrixWorldNeedsUpdate = true;
-}
+const world = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3(1, 1, 1), ok: false };
+const meas = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
+const lastRaw = new THREE.Matrix4(), tmp = new THREE.Matrix4(), rot = new THREE.Matrix4();
+const SMOOTH = 0.3; // quanto conta ogni nuova misura (0..1): più basso = più fermo ma più lento a correggersi
 
-function setLocked(on) {
-  isLocked = on;
-  if (on) { updateLocked(); locked.add(stage); } else anchor.group.add(stage);
-  $('lock').textContent = on ? 'Sblocca' : 'Blocca';
-  $('lock').classList.toggle('on', on);
-  $('lock').disabled = !on && !tracking;
-  $('hint').classList.toggle('hidden', on || tracking);
+function updateSheet() {
+  if (tracking && anchor) {
+    const raw = anchor.group.matrix;
+    if (!raw.equals(lastRaw)) { // nuova misura dal riconoscimento
+      lastRaw.copy(raw);
+      tmp.copy(raw);
+      if (gyro.ok) tmp.premultiply(rot.makeRotationFromQuaternion(gyro.q));
+      tmp.decompose(meas.p, meas.q, meas.s);
+      if (!world.ok) { world.p.copy(meas.p); world.q.copy(meas.q); world.s.copy(meas.s); world.ok = true; }
+      else { world.p.lerp(meas.p, SMOOTH); world.q.slerp(meas.q, SMOOTH); world.s.lerp(meas.s, SMOOTH); }
+    }
+  }
+  if (!world.ok) return;
+  sheet.matrix.compose(world.p, world.q, world.s);
+  if (gyro.ok) sheet.matrix.premultiply(rot.makeRotationFromQuaternion(gyro.q).invert());
+  sheet.matrixWorldNeedsUpdate = true;
 }
-$('lock').onclick = () => setLocked(!isLocked);
 
 for (const a of anchors) {
   a.onTargetFound = () => {
     anchor = a; tracking = true;
-    if (!isLocked) { a.group.add(stage); $('hint').classList.add('hidden'); $('lock').disabled = false; }
+    // Ritrovato dopo una pausa lunga: riposiziona subito invece di scivolare fin lì.
+    if (performance.now() - lostAt > 1500) world.ok = false;
+    sheet.visible = true;
+    $('frame').classList.add('hidden');
+    if (!everFound) { everFound = true; message('Per girare la casa, trascina con un dito. Per ingrandirla, usa i pulsanti + e −.', 8); }
+    else message('');
   };
   a.onTargetLost = () => {
     if (a !== anchor) return;
-    tracking = false;
-    if (!isLocked) { $('hint').classList.remove('hidden'); $('lock').disabled = true; }
+    tracking = false; lostAt = performance.now();
   };
 }
 
-// ---------- Gesti: trascina = ruota, pizzica = ingrandisci, doppio tocco = ripristina ----------
-let zoom = 1, lastTap = 0;
+// Se il disegno resta fuori vista a lungo, la casa sparisce e torna l'invito a inquadrarlo.
+setInterval(() => {
+  if (!tracking && sheet.visible && performance.now() - lostAt > (gyro.ok ? 8000 : 2500)) {
+    sheet.visible = false;
+    $('frame').classList.remove('hidden');
+    message('Inquadra di nuovo il disegno');
+  }
+}, 500);
+
+// ---------- Ruotare e ingrandire (senza spostare la casa dal foglio) ----------
+let zoom = 1, drag = 0, turning = 0, lastTap = 0;
+const setZoom = (z) => { zoom = Math.max(0.4, Math.min(4, z)); };
+$('zoomIn').onclick = () => setZoom(zoom * 1.3);
+$('zoomOut').onclick = () => setZoom(zoom / 1.3);
+$('turn').onclick = () => { turning += Math.PI / 4; };
+
 const pointers = new Map();
 let pinchStart = null;
 const el = renderer.domElement.parentElement;
@@ -192,19 +222,18 @@ el.addEventListener('pointerdown', (e) => {
     pinchStart = { d: Math.hypot(a.x - b.x, a.y - b.y), zoom };
   }
   if (pointers.size === 1) {
-    if (e.timeStamp - lastTap < 300) { zoom = 1; pivot.rotation.y = 0; }
+    if (e.timeStamp - lastTap < 300) { zoom = 1; drag = 0; turning = 0; } // doppio tocco: ripristina
     lastTap = e.timeStamp;
   }
 });
 el.addEventListener('pointermove', (e) => {
   const p = pointers.get(e.pointerId); if (!p) return;
-  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  const dx = e.clientX - p.x;
   p.x = e.clientX; p.y = e.clientY;
-  if (pointers.size === 1) {
-    pivot.rotation.y += dx * 0.01;
-  } else if (pointers.size === 2 && pinchStart) {
+  if (pointers.size === 1) drag += dx * 0.01;
+  else if (pointers.size === 2 && pinchStart) {
     const [a, b] = [...pointers.values()];
-    zoom = Math.max(0.3, Math.min(5, pinchStart.zoom * Math.hypot(a.x - b.x, a.y - b.y) / pinchStart.d));
+    setZoom(pinchStart.zoom * Math.hypot(a.x - b.x, a.y - b.y) / pinchStart.d);
   }
 });
 const up = (e) => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchStart = null; };
@@ -219,10 +248,8 @@ $('room').onclick = async () => {
   if (running) { mindar.stop(); running = false; } // libera la fotocamera per l'AR di sistema
   mv.activateAR();
   $('intro').classList.remove('hidden');
-  $('toolbar').classList.add('hidden');
-  $('hint').classList.add('hidden');
-  $('gesture').classList.add('hidden');
-  $('start').textContent = 'Torna alla pianta';
+  for (const id of ['toolbar', 'frame', 'message']) $(id).classList.add('hidden');
+  $('start').textContent = 'Torna al disegno';
   $('start').disabled = false;
   status('');
 };
@@ -230,28 +257,31 @@ $('room').onclick = async () => {
 $('start').onclick = async () => {
   askGyro();
   $('start').disabled = true;
-  status('Caricamento…');
+  status('Un momento…');
   try {
     await Promise.all([modelReady, mindar.start()]);
     running = true;
   } catch (e) {
     console.error(e);
-    status('Fotocamera non disponibile. Prova "mettilo nella stanza".');
+    status('Non riesco ad aprire la fotocamera. Puoi premere «Metti la casa nella stanza».');
     $('start').disabled = false;
     return;
   }
-  setLocked(false);
+  status('');
   $('intro').classList.add('hidden');
   $('toolbar').classList.remove('hidden');
-  $('gesture').classList.remove('hidden');
+  if (!sheet.visible) { $('frame').classList.remove('hidden'); message('Inquadra il disegno, tutto intero'); }
+  let shown = 0;
   renderer.setAnimationLoop(() => {
+    shown += (turning - shown) * 0.15; // rotazione morbida del pulsante ⟳
+    pivot.rotation.y = drag + shown;
     pivot.scale.setScalar(zoom);
-    if (isLocked) updateLocked();
+    updateSheet();
     renderer.render(scene, camera);
   });
 };
 
-// Dal pannello iniziale "mettilo nella stanza" apre direttamente l'AR di sistema.
+// Dal pannello iniziale apre direttamente l'AR di sistema.
 $('roomIntro').onclick = (e) => { e.preventDefault(); $('room').onclick(); };
 </script>
 </body>
