@@ -1,90 +1,58 @@
-"""Foglio quadrato per la mostra: disegno (marker) in alto, QR code e istruzioni in basso.
-Uso: python tools/foglio_stampa.py [proposta]   (A, B o C; senza argomento: tutte e tre)
-  ->  stampa/foglio-mostra-<proposta>.pdf (icona originale) e stampa/foglio-mostra-<proposta>-cornice.pdf"""
+"""Foglio quadrato per la mostra, compatto: disegno ritagliato sul contenuto, sotto QR code e istruzioni.
+Uso: python tools/foglio_stampa.py  ->  stampa/foglio-mostra.pdf"""
 import os
-import sys
 import pymupdf
+from PIL import Image, ImageOps
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ST = os.path.join(ROOT, 'stampa')
 MM = 72 / 25.4
-LATO = 300  # foglio quadrato 30 x 30 cm
 BLU = (1 / 255, 24 / 255, 88 / 255)
 NERO = (0.1, 0.1, 0.15)
 F = r'C:\Windows\Fonts'
 
-# Proposte di istruzioni, pensate per chi non usa spesso lo smartphone.
-# Ogni passo: (numero, testo) oppure (None, testo) per una riga rientrata sotto il passo precedente.
-PROPOSTE = {
-    'D': {  # consigliata: spiega le due modalità con i nomi dei pulsanti
-        'titolo': 'Guarda la casa in 3D',
-        'passi': [
-            ('1', 'Inquadra il codice qui accanto con la fotocamera e tocca il link.'),
-            ('2', 'Scegli come vederla:'),
-            (None, '«Sul disegno»: punta il telefono su questo disegno, la casa appare sopra.'),
-            (None, '«Dove vuoi tu»: appoggia la casa su un tavolo o sul pavimento.'),
-        ],
-        'nota': None,
-    },
-    'E': {  # più breve: un solo percorso, l'altro come nota
-        'titolo': 'Guarda la casa in 3D',
-        'passi': [
-            ('1', 'Inquadra il codice qui accanto con la fotocamera e tocca il link.'),
-            ('2', 'Premi «Sul disegno» e punta il telefono su questo disegno.'),
-        ],
-        'nota': 'Vuoi la casa su un tavolo o sul pavimento, intorno a te? Premi «Dove vuoi tu».',
-    },
-}
+LATO = 200      # foglio 20 x 20 cm
+MARGINE = 8
+GAP = 7         # spazio tra disegno e riga sotto
 
+src = pymupdf.open(os.path.join(ST, 'marker_pianta_foglio_20x20cm.pdf'))
+page = src[0]
 
-def r(x, y, w, h):
-    return pymupdf.Rect(x * MM, y * MM, (x + w) * MM, (y + h) * MM)
+# Ritaglio del disegno sul suo contenuto (il PDF originale ha ampi margini bianchi).
+z = 4
+pix = page.get_pixmap(matrix=pymupdf.Matrix(z, z))
+img = Image.frombytes('RGB', (pix.width, pix.height), pix.samples)
+x0, y0, x1, y1 = ImageOps.invert(img.convert('L')).point(lambda v: 255 if v > 24 else 0).getbbox()
+pad = 1.5
+clip = pymupdf.Rect(x0 / z - pad, y0 / z - pad, x1 / z + pad, y1 / z + pad)
+ratio = clip.height / clip.width
 
+doc = pymupdf.open()
+p = doc.new_page(width=LATO * MM, height=LATO * MM)
+for name, file in [('georgiab', 'georgiab.ttf'), ('segoe', 'segoeui.ttf'), ('segoeb', 'segoeuib.ttf')]:
+    p.insert_font(fontname=name, fontfile=os.path.join(F, file))
 
-def foglio(out, testi, marker_pdf=None, marker_png=None):
-    doc = pymupdf.open()
-    p = doc.new_page(width=LATO * MM, height=LATO * MM)
-    for name, file in [('georgiab', 'georgiab.ttf'), ('georgia', 'georgia.ttf'), ('segoe', 'segoeui.ttf'), ('segoeb', 'segoeuib.ttf')]:
-        p.insert_font(fontname=name, fontfile=os.path.join(F, file))
+# Disegno a tutta larghezza
+w = LATO - 2 * MARGINE
+h = w * ratio
+p.show_pdf_page(pymupdf.Rect(MARGINE * MM, MARGINE * MM, (MARGINE + w) * MM, (MARGINE + h) * MM), src, 0, clip=clip)
 
-    # disegno 200 x 200 mm, centrato (va stampato intero e non deformato)
-    box = r((LATO - 200) / 2, 8, 200, 200)
-    if marker_pdf:
-        p.show_pdf_page(box, pymupdf.open(marker_pdf), 0)
-    else:
-        p.insert_image(box, filename=marker_png)
+# Riga sotto: QR a sinistra (alto quanto lo spazio rimasto), testi a destra
+top = MARGINE + h + GAP
+qr_size = LATO - MARGINE - top
+qr = pymupdf.open(os.path.join(ST, 'qr.svg'))
+p.show_pdf_page(pymupdf.Rect(MARGINE * MM, top * MM, (MARGINE + qr_size) * MM, (top + qr_size) * MM), pymupdf.open('pdf', qr.convert_to_pdf()), 0)
 
-    p.draw_line(pymupdf.Point(20 * MM, 215 * MM), pymupdf.Point((LATO - 20) * MM, 215 * MM), color=BLU, width=1)
+x = (MARGINE + qr_size + 7) * MM
+passi = ['Inquadra il QR code e apri il link.', 'Esplora il modello.']
+riga = qr_size / 3.2  # titolo + 2 passi distribuiti sull'altezza del QR
+p.insert_text((x, (top + riga * 0.62) * MM), 'Casa Curtatone in 3D', fontname='georgiab', fontsize=25, color=BLU)
+for i, t in enumerate(passi, 1):
+    y = top + riga * (1.2 + (i - 1) * 0.95)
+    p.draw_circle(pymupdf.Point(x + 4.2 * MM, (y + 2.6) * MM), 4.2 * MM, color=BLU, fill=BLU)
+    p.insert_text((x + (2.75 if i == 1 else 2.4) * MM, (y + 4.9) * MM), str(i), fontname='segoeb', fontsize=16, color=(1, 1, 1))
+    p.insert_text((x + 11.5 * MM, (y + 4.8) * MM), t, fontname='segoe', fontsize=18, color=NERO)
 
-    # QR code (vettoriale)
-    qr = pymupdf.open(os.path.join(ST, 'qr.svg'))
-    p.show_pdf_page(r(18, 222, 66, 66), pymupdf.open('pdf', qr.convert_to_pdf()), 0)
-
-    # testi: grandi e brevi
-    x = 93 * MM
-    p.insert_text((x, 234 * MM), testi['titolo'], fontname='georgiab', fontsize=31, color=BLU)
-    y = 242
-    for n, t in testi['passi']:
-        if n:
-            p.draw_circle(pymupdf.Point(x + 4 * MM, (y + 2.6) * MM), 4 * MM, color=BLU, fill=BLU)
-            p.insert_text((x + (2.6 if n == '1' else 2.2) * MM, (y + 4.7) * MM), n, fontname='segoeb', fontsize=15, color=(1, 1, 1))
-            p.insert_text((x + 11 * MM, (y + 4.6) * MM), t, fontname='segoe', fontsize=16, color=NERO)
-            y += 10.5
-        else:  # opzione: nome del pulsante in grassetto blu, spiegazione normale
-            nome, resto = t.split(':', 1)
-            p.insert_text((x + 11 * MM, (y + 4.4) * MM), nome + ':', fontname='segoeb', fontsize=15, color=BLU)
-            w = pymupdf.Font(fontfile=os.path.join(F, 'segoeuib.ttf')).text_length(nome + ': ', fontsize=15)
-            p.insert_text((x + 11 * MM + w, (y + 4.4) * MM), resto.strip(), fontname='segoe', fontsize=15, color=NERO)
-            y += 9
-    if testi['nota']:
-        rc = pymupdf.Rect(x, (y + 1) * MM, (LATO - 16) * MM, (y + 18) * MM)
-        p.insert_textbox(rc, testi['nota'], fontname='segoeb', fontsize=13.5, color=BLU, lineheight=1.3)
-
-    doc.save(out, garbage=4, deflate=True)
-    print('OK', out)
-
-
-scelte = sys.argv[1:] or list(PROPOSTE)
-for k in scelte:
-    foglio(os.path.join(ST, f'foglio-mostra-{k}.pdf'), PROPOSTE[k], marker_pdf=os.path.join(ST, 'marker_pianta_foglio_20x20cm.pdf'))
-    foglio(os.path.join(ST, f'foglio-mostra-{k}-cornice.pdf'), PROPOSTE[k], marker_png=os.path.join(ST, 'marker-pianta-plus-3600.png'))
+out = os.path.join(ST, 'foglio-mostra.pdf')
+doc.save(out, garbage=4, deflate=True)
+print(f'OK {out}  disegno {w:.0f}x{h:.0f} mm, QR {qr_size:.0f} mm')
