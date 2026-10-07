@@ -22,6 +22,12 @@
   .steps .n { width: 40px; height: 40px; border-radius: 50%; background: var(--blu); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 20px; }
   button, .btn { font: 700 21px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif; border: 0; border-radius: 16px; min-height: 64px; padding: 16px 22px; background: var(--blu); color: #fff; text-decoration: none; text-align: center; cursor: pointer; }
   .btn.secondary { background: #fff; color: var(--blu); border: 3px solid var(--blu); }
+  .ask { font-size: 22px; font-weight: 700; margin: 4px 0 -6px; }
+  .choice { text-decoration: none; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 18px 20px; border-radius: 18px; }
+  .choice .t { font-size: 24px; font-weight: 800; }
+  .choice .d { font-size: 18px; font-weight: 400; line-height: 1.35; opacity: .92; }
+  .choice.secondary { background: #fff; color: var(--blu); border: 3px solid var(--blu); }
+  .note { font-size: 18px; line-height: 1.4; margin: 0; }
   #status { font-size: 19px; line-height: 1.4; color: var(--accent); min-height: 1.4em; text-align: center; }
 
   /* Durante l'AR */
@@ -47,13 +53,16 @@
 <section class="panel" id="intro">
   <h1>Casa Curtatone</h1>
   <p class="sub">Sergio Jaretti · Elio Luzi — Torino</p>
-  <ol class="steps">
-    <li><span class="n">1</span><span>Premi <b>«Inizia»</b>.</span></li>
-    <li><span class="n">2</span><span>Il telefono chiede uno o due permessi: premi sempre <b>«Consenti»</b>.</span></li>
-    <li><span class="n">3</span><span>Inquadra il disegno: la casa compare sopra il foglio.</span></li>
-  </ol>
-  <button id="start">Inizia</button>
-  <a class="btn secondary" id="roomIntro" href="stanza.html">Metti la casa nella stanza</a>
+  <p class="ask">Come vuoi vedere la casa?</p>
+  <button class="choice" id="start">
+    <span class="t">Sul disegno</span>
+    <span class="d">Punta il telefono sul disegno esposto: la casa compare sopra.</span>
+  </button>
+  <a class="choice secondary" id="roomIntro" href="stanza.html">
+    <span class="t">Dove vuoi tu</span>
+    <span class="d">Appoggia la casa su un tavolo o sul pavimento e camminale intorno.</span>
+  </a>
+  <p class="note">Il telefono chiederà dei permessi: premi sempre <b>«Consenti»</b>.</p>
   <div id="status" role="status"></div>
 </section>
 
@@ -63,7 +72,7 @@
   <button class="round" id="zoomOut" aria-label="Rimpicciolisci">−</button>
   <button class="round" id="zoomIn" aria-label="Ingrandisci">+</button>
   <button class="round" id="turn" aria-label="Ruota la casa">⟳</button>
-  <button id="room">Nella stanza</button>
+  <button id="room">Dove vuoi tu</button>
 </div>
 <!-- Usato solo per aprire l'AR di sistema: Quick Look su iPhone, Scene Viewer/WebXR su Android -->
 <model-viewer id="mv" loading="eager" src="assets/casa.glb" ios-src="assets/casa.usdz" ar ar-modes="webxr scene-viewer quick-look"
@@ -151,7 +160,23 @@ const gyro = { q: new THREE.Quaternion(), ok: false };
     euler.set(e.beta * D, e.alpha * D, -e.gamma * D, 'YXZ');
     gyro.q.setFromEuler(euler).multiply(q1).multiply(q0.setFromAxisAngle(zee, -screenAngle * D));
     gyro.ok = true;
+    const now = performance.now();
+    gyro.history.push({ t: now, q: gyro.q.clone() });
+    while (gyro.history.length > 2 && now - gyro.history[0].t > 400) gyro.history.shift();
   });
+}
+gyro.history = [];
+// Orientamento del telefono in un istante passato (il riconoscimento arriva con qualche ms di ritardo).
+function gyroAt(t, out) {
+  const h = gyro.history;
+  if (!h.length) return out.copy(gyro.q);
+  for (let i = h.length - 1; i > 0; i--) {
+    if (h[i - 1].t <= t) {
+      const a = h[i - 1], b = h[i], k = b.t > a.t ? Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t))) : 1;
+      return out.copy(a.q).slerp(b.q, k);
+    }
+  }
+  return out.copy(h[0].q);
 }
 async function askGyro() { // iOS chiede il permesso, e solo dopo un tocco dell'utente
   try { if (window.DeviceOrientationEvent?.requestPermission) await DeviceOrientationEvent.requestPermission(); } catch (e) { console.warn(e); }
@@ -159,19 +184,42 @@ async function askGyro() { // iOS chiede il permesso, e solo dopo un tocco dell'
 
 const world = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3(1, 1, 1), ok: false };
 const meas = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
-const lastRaw = new THREE.Matrix4(), tmp = new THREE.Matrix4(), rot = new THREE.Matrix4();
-const SMOOTH = 0.3; // quanto conta ogni nuova misura (0..1): più basso = più fermo ma più lento a correggersi
+const lastRaw = new THREE.Matrix4(), tmp = new THREE.Matrix4(), rot = new THREE.Matrix4(), qTmp = new THREE.Quaternion();
+
+// Il ritardo del riconoscimento varia da telefono a telefono: lo stimiamo mentre si usa la pagina.
+// Il foglio è fermo, quindi il ritardo giusto è quello con cui la sua posizione "nel mondo" si muove meno.
+const LAGS = [0, 30, 60, 90, 120, 150, 180]; // ms
+const lagTrack = LAGS.map(() => ({ p: new THREE.Vector3(), q: new THREE.Quaternion(), err: 0, ok: false }));
+let lagBest = 2;
+function measureWorld(raw, now) {
+  const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+  LAGS.forEach((lag, i) => {
+    tmp.copy(raw).premultiply(rot.makeRotationFromQuaternion(gyroAt(now - lag, qTmp)));
+    tmp.decompose(p, q, s);
+    const L = lagTrack[i];
+    if (L.ok) L.err = L.err * 0.97 + (p.distanceTo(L.p) + L.q.angleTo(q) * 0.5) * 0.03;
+    L.p.copy(p); L.q.copy(q); L.ok = true;
+    if (L.err < lagTrack[lagBest].err) lagBest = i;
+  });
+  tmp.copy(raw).premultiply(rot.makeRotationFromQuaternion(gyroAt(now - LAGS[lagBest], qTmp)));
+  tmp.decompose(meas.p, meas.q, meas.s);
+}
 
 function updateSheet() {
   if (tracking && anchor) {
     const raw = anchor.group.matrix;
     if (!raw.equals(lastRaw)) { // nuova misura dal riconoscimento
       lastRaw.copy(raw);
-      tmp.copy(raw);
-      if (gyro.ok) tmp.premultiply(rot.makeRotationFromQuaternion(gyro.q));
-      tmp.decompose(meas.p, meas.q, meas.s);
+      if (gyro.ok) measureWorld(raw, performance.now());
+      else raw.decompose(meas.p, meas.q, meas.s);
       if (!world.ok) { world.p.copy(meas.p); world.q.copy(meas.q); world.s.copy(meas.s); world.ok = true; }
-      else { world.p.lerp(meas.p, SMOOTH); world.q.slerp(meas.q, SMOOTH); world.s.lerp(meas.s, SMOOTH); }
+      else {
+        // Smorzamento adattivo: piccole differenze = tremolio → quasi fermo;
+        // grandi differenze = ci si è spostati davvero → segue subito.
+        const kp = Math.min(1, 0.06 + world.p.distanceTo(meas.p) * 6);
+        const kq = Math.min(1, 0.06 + world.q.angleTo(meas.q) * 4);
+        world.p.lerp(meas.p, kp); world.q.slerp(meas.q, kq); world.s.lerp(meas.s, kp);
+      }
     }
   }
   if (!world.ok) return;
@@ -187,7 +235,7 @@ for (const a of anchors) {
     if (performance.now() - lostAt > 1500) world.ok = false;
     sheet.visible = true;
     $('frame').classList.add('hidden');
-    if (!everFound) { everFound = true; message('Per girare la casa, trascina con un dito. Per ingrandirla, usa i pulsanti + e −.', 8); }
+    if (!everFound) { everFound = true; message('Per girare la casa, trascina con un dito. Per ingrandirla, usa + e −. Per metterla altrove, premi «Dove vuoi tu».', 9); }
     else message('');
   };
   a.onTargetLost = () => {
@@ -249,7 +297,6 @@ $('room').onclick = async () => {
   mv.activateAR();
   $('intro').classList.remove('hidden');
   for (const id of ['toolbar', 'frame', 'message']) $(id).classList.add('hidden');
-  $('start').textContent = 'Torna al disegno';
   $('start').disabled = false;
   status('');
 };
@@ -263,7 +310,7 @@ $('start').onclick = async () => {
     running = true;
   } catch (e) {
     console.error(e);
-    status('Non riesco ad aprire la fotocamera. Puoi premere «Metti la casa nella stanza».');
+    status('Non riesco ad aprire la fotocamera. Prova con «Dove vuoi tu».');
     $('start').disabled = false;
     return;
   }

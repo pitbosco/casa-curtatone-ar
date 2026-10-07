@@ -13,34 +13,26 @@ BLU = (1 / 255, 24 / 255, 88 / 255)
 NERO = (0.1, 0.1, 0.15)
 F = r'C:\Windows\Fonts'
 
-# Tre proposte di istruzioni, pensate per chi non usa spesso lo smartphone.
+# Proposte di istruzioni, pensate per chi non usa spesso lo smartphone.
+# Ogni passo: (numero, testo) oppure (None, testo) per una riga rientrata sotto il passo precedente.
 PROPOSTE = {
-    'A': {  # essenziale
+    'D': {  # consigliata: spiega le due modalità con i nomi dei pulsanti
         'titolo': 'Guarda la casa in 3D',
         'passi': [
-            'Inquadra il codice qui accanto con la fotocamera del telefono.',
-            'Tocca il link, poi premi «Inizia» e «Consenti».',
-            'Punta il telefono sul disegno: la casa appare sopra.',
+            ('1', 'Inquadra il codice qui accanto con la fotocamera e tocca il link.'),
+            ('2', 'Scegli come vederla:'),
+            (None, '«Sul disegno»: punta il telefono su questo disegno, la casa appare sopra.'),
+            (None, '«Dove vuoi tu»: appoggia la casa su un tavolo o sul pavimento.'),
         ],
         'nota': None,
     },
-    'B': {  # essenziale + come usare i pulsanti
+    'E': {  # più breve: un solo percorso, l'altro come nota
         'titolo': 'Guarda la casa in 3D',
         'passi': [
-            'Inquadra il codice qui accanto con la fotocamera del telefono.',
-            'Tocca il link, poi premi «Inizia» e «Consenti».',
-            'Punta il telefono sul disegno: la casa appare sopra.',
+            ('1', 'Inquadra il codice qui accanto con la fotocamera e tocca il link.'),
+            ('2', 'Premi «Sul disegno» e punta il telefono su questo disegno.'),
         ],
-        'nota': 'Con i pulsanti + e − la ingrandisci, con la freccia la giri. «Nella stanza» la appoggia sul pavimento.',
-    },
-    'C': {  # invito, tono colloquiale
-        'titolo': 'Vuoi vedere la casa in 3D?',
-        'passi': [
-            'Apri la fotocamera del telefono e inquadra il codice.',
-            'Tocca il link che compare, poi «Inizia».',
-            'Punta il telefono sul disegno e giragli intorno.',
-        ],
-        'nota': 'Non serve scaricare nessuna app.',
+        'nota': 'Vuoi la casa su un tavolo o sul pavimento, intorno a te? Premi «Dove vuoi tu».',
     },
 }
 
@@ -72,11 +64,18 @@ def foglio(out, testi, marker_pdf=None, marker_png=None):
     x = 93 * MM
     p.insert_text((x, 234 * MM), testi['titolo'], fontname='georgiab', fontsize=31, color=BLU)
     y = 242
-    for i, t in enumerate(testi['passi'], 1):
-        p.draw_circle(pymupdf.Point(x + 4 * MM, (y + 2.6) * MM), 4 * MM, color=BLU, fill=BLU)
-        p.insert_text((x + (2.2 if i != 1 else 2.6) * MM, (y + 4.7) * MM), str(i), fontname='segoeb', fontsize=15, color=(1, 1, 1))
-        p.insert_text((x + 11 * MM, (y + 4.6) * MM), t, fontname='segoe', fontsize=16.5, color=NERO)
-        y += 11
+    for n, t in testi['passi']:
+        if n:
+            p.draw_circle(pymupdf.Point(x + 4 * MM, (y + 2.6) * MM), 4 * MM, color=BLU, fill=BLU)
+            p.insert_text((x + (2.6 if n == '1' else 2.2) * MM, (y + 4.7) * MM), n, fontname='segoeb', fontsize=15, color=(1, 1, 1))
+            p.insert_text((x + 11 * MM, (y + 4.6) * MM), t, fontname='segoe', fontsize=16, color=NERO)
+            y += 10.5
+        else:  # opzione: nome del pulsante in grassetto blu, spiegazione normale
+            nome, resto = t.split(':', 1)
+            p.insert_text((x + 11 * MM, (y + 4.4) * MM), nome + ':', fontname='segoeb', fontsize=15, color=BLU)
+            w = pymupdf.Font(fontfile=os.path.join(F, 'segoeuib.ttf')).text_length(nome + ': ', fontsize=15)
+            p.insert_text((x + 11 * MM + w, (y + 4.4) * MM), resto.strip(), fontname='segoe', fontsize=15, color=NERO)
+            y += 9
     if testi['nota']:
         rc = pymupdf.Rect(x, (y + 1) * MM, (LATO - 16) * MM, (y + 18) * MM)
         p.insert_textbox(rc, testi['nota'], fontname='segoeb', fontsize=13.5, color=BLU, lineheight=1.3)
