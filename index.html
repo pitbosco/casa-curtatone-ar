@@ -10,6 +10,9 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   body { -webkit-tap-highlight-color: transparent; }
+  header { position: fixed; z-index: 2; top: 0; left: 0; right: 0; padding: calc(18px + env(safe-area-inset-top)) 20px 0; pointer-events: none; }
+  h1 { margin: 0; font: 700 34px/1.05 Georgia, serif; color: var(--blu); }
+  .sub { margin: 6px 0 0; font: 18px/1.3 Georgia, serif; color: var(--blu); }
   model-viewer { width: 100%; height: 100%; --poster-color: transparent; }
   .bottom { position: fixed; z-index: 2; left: 16px; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom)); display: grid; gap: 10px; }
   .ar { width: 100%; min-height: 72px; border: 0; border-radius: 18px; padding: 16px 20px; background: var(--blu); color: #fff; font: 700 23px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif; box-shadow: 0 4px 16px rgba(0,0,0,.2); cursor: pointer; }
@@ -17,6 +20,10 @@
 </style>
 </head>
 <body>
+<header>
+  <h1>Casa Curtatone</h1>
+  <p class="sub">Sergio Jaretti · Elio Luzi — Torino</p>
+</header>
 
 <model-viewer id="mv" src="assets/casa.glb" ios-src="assets/casa.usdz" alt="Modello 3D di Casa Curtatone"
   ar ar-modes="webxr scene-viewer quick-look" ar-placement="floor" ar-scale="auto"
